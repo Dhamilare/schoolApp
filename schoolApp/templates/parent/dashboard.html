@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load mathfilters %}
+
+{% block title %}My Children's Dashboard{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-4 md:p-6 lg:p-8">
+    <h1 class="text-4xl font-extrabold text-dark mb-8 text-center">
+        <i class="fas fa-child mr-3 text-primary"></i>My Children's Dashboard
+    </h1>
+
+    <div class="bg-white p-8 rounded-lg shadow-xl border border-gray-200 mb-8">
+        <p class="text-lg text-text_color leading-relaxed mb-4">
+            Welcome, <span class="font-semibold text-primary">{{ user.get_full_name|default:user.username }}</span>!
+            Here you can track the academic progress and attendance of your children.
+        </p>
+
+        {% if not children_data %}
+            <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-lg shadow-md" role="alert">
+                <p class="font-bold">No children linked to your account!</p>
+                <p>Please contact the school administration to link your children to your parent account.</p>
+            </div>
+        {% else %}
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {% for data in children_data %}
+                <div class="bg-indigo-50 p-6 rounded-lg shadow-md border border-indigo-200">
+                    <h2 class="text-2xl font-bold text-indigo-800 mb-4">
+                        <i class="fas fa-user-graduate mr-2"></i>{{ data.child.first_name }} {{ data.child.last_name }}
+                    </h2>
+                    <p class="text-md text-indigo-700 mb-2"><strong>Student ID:</strong> {{ data.child.student_id|default:"N/A" }}</p>
+                    <p class="text-md text-indigo-700 mb-4"><strong>Class:</strong> {{ data.child.current_class.name|default:"Unassigned" }}</p>
+
+                    {% if data.current_term_average is not None %}
+                        <div class="mb-4 p-3 bg-indigo-100 rounded-md border border-indigo-300">
+                            <p class="text-md font-semibold text-indigo-800">
+                                Current Term Average ({{ current_term.name|default:"N/A" }}):
+                                <span class="text-accent text-xl font-bold">{{ data.current_term_average }}%</span>
+                            </p>
+                        </div>
+                    {% else %}
+                        <p class="text-sm text-gray-600 mb-4">No overall average available for the current term.</p>
+                    {% endif %}
+
+                    <div class="mt-4">
+                        <h3 class="text-xl font-semibold text-indigo-800 mb-3"><i class="fas fa-chart-line mr-2"></i>Recent Scores</h3>
+                        {% if data.recent_scores %}
+                            <ul class="list-disc list-inside text-indigo-700 mb-4">
+                                {% for score in data.recent_scores %}
+                                    <li>{{ score.assignment.title }} ({{ score.assignment.subject.name }}): <span class="font-semibold">{{ score.score_achieved }} / {{ score.assignment.max_score }}</span></li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p class="text-sm text-gray-600 mb-4">No recent scores available.</p>
+                        {% endif %}
+                    </div>
+
+                    <div class="mt-4">
+                        <h3 class="text-xl font-semibold text-indigo-800 mb-3"><i class="fas fa-clipboard-check mr-2"></i>Recent Attendance</h3>
+                        {% if data.recent_attendance %}
+                            <ul class="list-disc list-inside text-indigo-700 mb-4">
+                                {% for attendance in data.recent_attendance %}
+                                    <li>{{ attendance.date|date:"M d, Y" }}: <span class="font-semibold">{{ attendance.get_status_display }}</span></li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p class="text-sm text-gray-600 mb-4">No recent attendance records.</p>
+                        {% endif %}
+                    </div>
+
+                    <div class="mt-6 border-t border-indigo-300 pt-6">
+                        <h3 class="text-xl font-semibold text-indigo-800 mb-3"><i class="fas fa-file-pdf mr-2"></i>Generate Report Card</h3>
+                        <form id="reportCardForm_{{ data.child.id }}" class="flex flex-col space-y-3">
+                            <input type="hidden" name="student_id" value="{{ data.child.id }}">
+                            <select name="term_id" class="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm rounded-md shadow-sm">
+                                <option value="">Select Term</option>
+                                {% for term in available_terms %}
+                                    <option value="{{ term.id }}">{{ term.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="button" onclick="generateReportCard({{ data.child.id }})" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md shadow-lg transition duration-300 transform hover:scale-105 flex items-center justify-center">
+                                <i class="fas fa-download mr-2"></i>Download Report Card
+                            </button>
+                            <p id="reportCardError_{{ data.child.id }}" class="text-red-500 text-xs mt-1 hidden">Please select a term.</p>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/main.js' %}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // This function is still needed for parent dashboard to generate PDFs
+        window.generateReportCard = function(studentId) {
+            const form = document.getElementById(`reportCardForm_${studentId}`);
+            const termSelect = form.querySelector('select[name="term_id"]');
+            const termId = termSelect.value;
+            const errorElement = document.getElementById(`reportCardError_${studentId}`);
+
+            if (!termId) {
+                errorElement.classList.remove('hidden');
+                return;
+            } else {
+                errorElement.classList.add('hidden');
+            }
+
+            const pdfUrl = `/report_card/pdf/${studentId}/${termId}/`;
+            window.open(pdfUrl, '_blank');
+        };
+
+        // Note: Teacher-specific chart JS is not included here as this is a parent dashboard template.
+        // It remains in home.html.
+    });
+</script>
+{% endblock %}

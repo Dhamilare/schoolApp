@@ -1,0 +1,234 @@
+{% load static %}
+{% load mathfilters %}
+{% load app_filters %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report Card - {{ student.first_name }} {{ student.last_name }}</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20mm; /* A4 page padding */
+            font-size: 10pt;
+            color: #333;
+        }
+        .container {
+            width: 100%;
+            max-width: 210mm; /* A4 width */
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .header img {
+            max-width: 100px;
+            height: auto;
+            margin-bottom: 10px;
+        }
+        .header h1 {
+            font-size: 18pt;
+            margin: 0;
+            color: #0056b3; /* Primary color */
+        }
+        .header p {
+            margin: 2px 0;
+            font-size: 9pt;
+            color: #555;
+        }
+        .report-title {
+            text-align: center;
+            font-size: 16pt;
+            margin: 25px 0;
+            color: #007bff; /* Accent color */
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .student-info, .term-info {
+            width: 100%;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .student-info table, .term-info table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .student-info th, .term-info th,
+        .student-info td, .term-info td {
+            padding: 6px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        .student-info th, .term-info th {
+            width: 30%;
+            font-weight: bold;
+            color: #444;
+        }
+        .grades-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+        .grades-table th, .grades-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .grades-table th {
+            background-color: #e9ecef;
+            color: #333;
+            font-size: 9pt;
+            text-transform: uppercase;
+        }
+        .grades-table tbody tr:nth-child(even) {
+            background-color: #f6f6f6;
+        }
+        .summary-box {
+            border: 1px solid #0056b3;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+            background-color: #eaf5ff;
+        }
+        .summary-box p {
+            margin: 5px 0;
+            font-size: 11pt;
+        }
+        .summary-box strong {
+            color: #0056b3;
+        }
+        .remark {
+            margin-top: 20px;
+            font-size: 11pt;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #fffacd; /* Light yellow for remarks */
+        }
+        .signature-section {
+            margin-top: 40px;
+            display: flex;
+            justify-content: space-between;
+            page-break-inside: avoid;
+        }
+        .signature-box {
+            width: 48%;
+            text-align: center;
+            padding-top: 20px;
+            border-top: 1px dashed #999;
+            font-size: 9pt;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            font-size: 8pt;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            {% if school_profile.logo %}
+                <img src="{{ school_profile.logo.path|base64_encode }}" alt="School Logo" onerror="this.style.display='none';">
+            {% endif %}
+            <h1>{{ school_profile.name|default:"Your School Name" }}</h1>
+            <p>{{ school_profile.address|default:"[School Address]" }}</p>
+            <p>Phone: {{ school_profile.phone_number|default:"[School Phone]" }} | Email: {{ school_profile.email|default:"[School Email]" }}</p>
+            {% if school_profile.motto %}
+                <p><i>"{{ school_profile.motto }}"</i></p>
+            {% endif %}
+        </div>
+
+        <h2 class="report-title">Academic Report Card</h2>
+
+        <div class="student-info">
+            <table>
+                <tr>
+                    <th>Student Name:</th>
+                    <td>{{ student.first_name }} {{ student.last_name }}</td>
+                </tr>
+                <tr>
+                    <th>Student ID:</th>
+                    <td>{{ student.student_id|default:"N/A" }}</td>
+                </tr>
+                <tr>
+                    <th>Class:</th>
+                    <td>{{ student.current_class.name|default:"N/A" }}</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="term-info">
+            <table>
+                <tr>
+                    <th>Academic Term:</th>
+                    <td>{{ term.name }}</td>
+                </tr>
+                <tr>
+                    <th>Term Dates:</th>
+                    <td>{{ term.start_date|date:"F d, Y" }} - {{ term.end_date|date:"F d, Y" }}</td>
+                </tr>
+                <tr>
+                    <th>Date Generated:</th>
+                    <td>{{ current_date|date:"F d, Y" }}</td>
+                </tr>
+            </table>
+        </div>
+
+        <table class="grades-table">
+            <thead>
+                <tr>
+                    <th>Subject</th>
+                    <th>Score Achieved</th>
+                    <th>Max Score</th>
+                    <th>Percentage (%)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for subject_name, data in report_card_data.items %}
+                    <tr>
+                        <td><strong>{{ subject_name }}</strong></td>
+                        <td>{{ data.total_score }}</td>
+                        <td>{{ data.total_max_score }}</td>
+                        <td>{{ data.average|floatformat:2 }}%</td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="4" class="text-center">No scores recorded for this term.</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="summary-box">
+            <p><strong>Overall Term Average:</strong> <span style="font-size:14pt; color:#007bff;">{{ overall_average|floatformat:2 }}%</span></p>
+            <p><strong>Overall Remark:</strong> {{ remark }}</p>
+        </div>
+
+        <div class="signature-section">
+            <div class="signature-box">
+                <p>_________________________</p>
+                <p>Class Teacher Signature</p>
+            </div>
+            <div class="signature-box">
+                <p>_________________________</p>
+                <p>Principal Signature</p>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>&copy; {{ "now"|date:"Y" }} {{ school_profile.name|default:"School Management System" }}. All rights reserved.</p>
+            <p>Generated by the School Portal System.</p>
+        </div>
+    </div>
+</body>
+</html>

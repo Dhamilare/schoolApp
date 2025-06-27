@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+
+{% block title %}Login{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-center min-h-[calc(100vh-160px)] px-4"> {# Adjusted height to account for header/footer #}
+    <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md border border-gray-200">
+        <h2 class="text-3xl font-bold text-center text-primary mb-6">
+            <i class="fas fa-lock mr-2"></i>Login to Your Account
+        </h2>
+
+        <form method="post" class="space-y-6">
+            {% csrf_token %}
+            {{ form|crispy }}
+            <button type="submit" class="w-full bg-primary hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-md shadow-lg transition duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50">
+                <i class="fas fa-sign-in-alt mr-2"></i>Login
+            </button>
+        </form>
+
+        <div class="mt-6 text-center text-gray-600">
+            <p>Forgot password? <a href="#" class="text-primary hover:underline font-semibold">Reset here</a></p>
+            <p class="mt-2">Don't have an account? <a href="#" class="text-primary hover:underline font-semibold">Register here</a></p>
+        </div>
+    </div>
+</div>
+{% endblock %}

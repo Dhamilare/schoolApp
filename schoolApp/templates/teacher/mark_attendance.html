@@ -1,0 +1,144 @@
+{% extends 'base.html' %}
+{% load crispy_forms_tags %}
+{% load static %}
+
+{% block title %}Mark Attendance{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-4 md:p-6 lg:p-8">
+    <h1 class="text-4xl font-extrabold text-dark mb-6 text-center">
+        <i class="fas fa-calendar-alt mr-3 text-primary"></i>Mark Attendance for <span class="text-secondary">{{ selected_class.name }}</span>
+    </h1>
+    <p class="text-lg text-gray-600 text-center mb-8">
+        Date: <span class="font-semibold">{{ attendance_date|date:"F d, Y" }}</span>
+    </p>
+
+    <div class="bg-white p-8 rounded-lg shadow-xl w-full border border-gray-200">
+        <form id="attendanceInputForm" method="post" action="{% url 'save_attendance_ajax' selected_class.id attendance_date|date:'Y-m-d' %}" class="space-y-6">
+            {% csrf_token %}
+            {{ formset.management_form }} {# Essential for formsets #}
+
+            <div id="formset-container" class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Student Name
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Status
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for form in formset %}
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                    {{ form.student_name.as_widget }} {# Display student name #}
+                                    {{ form.student }} {# Hidden student ID #}
+                                    {{ form.id }} {# Hidden ID for existing attendance #}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                    {{ form.status.as_widget }}
+                                    {% if form.status.errors %}
+                                        <div class="text-red-500 text-xs mt-1">
+                                            {% for error in form.status.errors %}
+                                                {{ error }}
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex justify-end space-x-4 mt-8">
+                <a href="{% url 'select_class_for_attendance' %}" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-md shadow-lg transition duration-300 transform hover:scale-105 flex items-center">
+                    <i class="fas fa-arrow-left mr-2"></i>Back
+                </a>
+                <button type="submit" id="saveAttendanceBtn" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-300 transform hover:scale-105 flex items-center">
+                    <i class="fas fa-save mr-2"></i>Save Attendance
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div id="messageBox" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full mx-auto text-center border">
+            <h3 id="messageTitle" class="text-xl font-bold mb-3"></h3>
+            <p id="messageText" class="mb-4"></p>
+            <button id="closeMessageBox" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">
+                OK
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/main.js' %}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('attendanceInputForm');
+        const messageBox = document.getElementById('messageBox');
+        const messageTitle = document.getElementById('messageTitle');
+        const messageText = document.getElementById('messageText');
+        const closeMessageBox = document.getElementById('closeMessageBox');
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault(); // Prevent default form submission
+
+            const formData = new FormData(form);
+            const url = form.action;
+
+            fetch(url, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest', // Important for Django's is_ajax() check
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    messageTitle.textContent = 'Success!';
+                    messageText.textContent = data.message;
+                    messageBox.classList.remove('hidden');
+                    // Optionally, reload the page or update UI if needed
+                    // window.location.reload(); // Reload to show updated scores
+                } else {
+                    messageTitle.textContent = 'Error!';
+                    messageText.textContent = data.message;
+                    if (data.errors) {
+                        let errorHtml = '<ul class="list-disc list-inside text-left">';
+                        for (const prefix in data.errors) {
+                            for (const field in data.errors[prefix]) {
+                                errorHtml += `<li>${prefix} - ${field}: ${data.errors[prefix][field].join(', ')}</li>`;
+                            }
+                        }
+                        errorHtml += '</ul>';
+                        messageText.innerHTML += errorHtml; // Append detailed errors
+                    }
+                    messageBox.classList.remove('hidden');
+                }
+            })
+            .catch(error => {
+                console.error('Fetch error:', error);
+                messageTitle.textContent = 'Network Error';
+                messageText.textContent = 'Could not connect to the server. Please try again.';
+                messageBox.classList.remove('hidden');
+            });
+        });
+
+        closeMessageBox.addEventListener('click', function() {
+            messageBox.classList.add('hidden');
+            // If success, refresh the page to show latest data
+            if (messageTitle.textContent === 'Success!') {
+                window.location.reload();
+            }
+        });
+    });
+</script>
+{% endblock %}

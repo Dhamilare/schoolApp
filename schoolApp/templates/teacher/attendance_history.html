@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Attendance History{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-4 md:p-6 lg:p-8">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-4xl font-extrabold text-dark flex items-center">
+            <i class="fas fa-history mr-3 text-primary"></i>Attendance History
+        </h1>
+        <a href="{% url 'select_class_for_attendance' %}" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-300 transform hover:scale-105 flex items-center">
+            <i class="fas fa-calendar-plus mr-2"></i>Mark Attendance
+        </a>
+    </div>
+
+    {% if attendance_records %}
+        <div class="bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Date
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Class
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Student Name
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Status
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Recorded By
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Timestamp
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for record in attendance_records %}
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                    {{ record.date|date:"Y-m-d" }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ record.class_obj.name }} {# CHANGED HERE #}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ record.student.first_name }} {{ record.student.last_name }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                                        {% if record.status == 'P' %}bg-green-100 text-green-800
+                                        {% elif record.status == 'A' %}bg-red-100 text-red-800
+                                        {% elif record.status == 'L' %}bg-yellow-100 text-yellow-800
+                                        {% elif record.status == 'E' %}bg-blue-100 text-blue-800
+                                        {% endif %}">
+                                        {{ record.get_status_display }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ record.recorded_by.username }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ record.timestamp|date:"Y-m-d H:i" }}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    {% else %}
+        <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-lg shadow-md" role="alert">
+            <p class="font-bold">No attendance records found!</p>
+            <p>You haven't marked any attendance yet. Click "Mark Attendance" to get started.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
