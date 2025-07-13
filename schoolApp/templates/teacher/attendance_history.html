@@ -5,51 +5,52 @@
 
 {% block content %}
 <div class="container mx-auto p-4 md:p-6 lg:p-8">
-    <div class="flex justify-between items-center mb-6">
-        <h1 class="text-4xl font-extrabold text-dark flex items-center">
-            <i class="fas fa-history mr-3 text-primary"></i>Attendance History
+    {# Page Header with Action Button #}
+    <div class="flex flex-col sm:flex-row justify-between items-center mb-8 bg-white p-6 rounded-lg shadow-md border border-gray-200">
+        <h1 class="text-4xl font-extrabold text-dark flex items-center mb-4 sm:mb-0">
+            <i class="fas fa-history mr-4 text-primary animate-bounce-once"></i>Attendance History
         </h1>
-        <a href="{% url 'select_class_for_attendance' %}" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-300 transform hover:scale-105 flex items-center">
-            <i class="fas fa-calendar-plus mr-2"></i>Mark Attendance
+        <a href="{% url 'select_class_for_attendance' %}" class="bg-gradient-to-r from-primary to-secondary hover:from-indigo-700 hover:to-indigo-800 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center group">
+            <i class="fas fa-calendar-plus mr-3 group-hover:rotate-6"></i>Mark New Attendance
         </a>
     </div>
 
     {% if attendance_records %}
-        <div class="bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden">
+        <div class="bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
+                    <thead class="bg-gray-100">
                         <tr>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Date
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Class
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Student Name
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Status
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Recorded By
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Timestamp
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Recorded At
                             </th>
                         </tr>
                     </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
+                    <tbody class="bg-white divide-y divide-gray-100">
                         {% for record in attendance_records %}
-                            <tr class="hover:bg-gray-50">
+                            <tr class="hover:bg-blue-50 transition-colors duration-200 ease-in-out">
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                    {{ record.date|date:"Y-m-d" }}
+                                    {{ record.date|date:"M d, Y" }}
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ record.class_obj.name }} {# CHANGED HERE #}
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {{ record.class_obj.name }}
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                                     {{ record.student.first_name }} {{ record.student.last_name }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm">
@@ -62,11 +63,11 @@
                                         {{ record.get_status_display }}
                                     </span>
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ record.recorded_by.username }}
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {{ record.recorded_by.get_full_name|default:record.recorded_by.username }}
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ record.timestamp|date:"Y-m-d H:i" }}
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {{ record.timestamp|date:"M d, Y H:i" }}
                                 </td>
                             </tr>
                         {% endfor %}
@@ -75,10 +76,14 @@
             </div>
         </div>
     {% else %}
-        <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-lg shadow-md" role="alert">
-            <p class="font-bold">No attendance records found!</p>
-            <p>You haven't marked any attendance yet. Click "Mark Attendance" to get started.</p>
+        <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-6 rounded-lg shadow-md text-center animate-fade-in" role="alert">
+            <p class="font-bold text-xl mb-2"><i class="fas fa-info-circle mr-2"></i>No attendance records found!</p>
+            <p class="text-lg">You haven't marked any attendance yet. Click the "Mark New Attendance" button above to get started.</p>
         </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{# No specific JS for this page needed beyond base.html and main.js #}
 {% endblock %}

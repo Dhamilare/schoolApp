@@ -1,71 +1,81 @@
+{# core_app/templates/core_app/teacher/assignment_list.html #}
 {% extends 'base.html' %}
 {% load static %}
+{% load mathfilters %}
+
 {% block title %}My Assignments{% endblock %}
 
 {% block content %}
 <div class="container mx-auto p-4 md:p-6 lg:p-8">
-    <div class="flex justify-between items-center mb-6">
-        <h1 class="text-4xl font-extrabold text-dark flex items-center">
-            <i class="fas fa-list-check mr-3 text-primary"></i>My Assignments
+    {# Page Header with Action Button #}
+    <div class="flex flex-col sm:flex-row justify-between items-center mb-8 bg-white p-6 rounded-lg shadow-md border border-gray-200">
+        <h1 class="text-4xl font-extrabold text-dark flex items-center mb-4 sm:mb-0">
+            <i class="fas fa-list-check mr-4 text-primary animate-bounce-once"></i>My Assignments
         </h1>
-        <a href="{% url 'create_assignment' %}" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-300 transform hover:scale-105 flex items-center">
-            <i class="fas fa-plus-circle mr-2"></i>New Assignment
+        <a href="{% url 'create_assignment' %}" class="bg-gradient-to-r from-primary to-secondary hover:from-indigo-700 hover:to-indigo-800 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center group">
+            <i class="fas fa-plus-circle mr-3 group-hover:rotate-90 transition-transform duration-300"></i>Create New Assignment
         </a>
     </div>
 
     {% if assignments %}
-        <div class="bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden">
+        <div class="bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
+                    <thead class="bg-gray-100">
                         <tr>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Title
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Subject
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Class
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Term
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Max Score
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Due Date
                             </th>
-                            <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Actions
                             </th>
                         </tr>
                     </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
+                    <tbody class="bg-white divide-y divide-gray-100">
                         {% for assignment in assignments %}
-                            <tr class="hover:bg-gray-50">
+                            <tr class="hover:bg-blue-50 transition-colors duration-200 ease-in-out">
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                     {{ assignment.title }}
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                                     {{ assignment.subject.name }}
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ assignment.class_obj.name }} {# CHANGED HERE #}
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {{ assignment.class_obj.name }}
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                                     {{ assignment.term.name }}
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ assignment.max_score }}
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                        {{ assignment.max_score }}
+                                    </span>
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ assignment.due_date|default:"N/A" }}
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {% if assignment.due_date %}
+                                        {{ assignment.due_date|date:"M d, Y" }}
+                                    {% else %}
+                                        <span class="text-gray-500">N/A</span>
+                                    {% endif %}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                                    <a href="{% url 'input_scores' assignment.id %}" class="text-indigo-600 hover:text-indigo-900 mr-4 transition duration-300">
-                                        <i class="fas fa-edit mr-1"></i>Input Scores
+                                    <a href="{% url 'input_scores' assignment.id %}" class="text-indigo-600 hover:text-indigo-900 transition duration-300 transform hover:scale-110 inline-flex items-center group">
+                                        <i class="fas fa-edit mr-2 group-hover:animate-pulse"></i>Input Scores
                                     </a>
                                 </td>
                             </tr>
@@ -75,10 +85,14 @@
             </div>
         </div>
     {% else %}
-        <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-lg shadow-md" role="alert">
-            <p class="font-bold">No assignments found!</p>
-            <p>You haven't created any assignments yet. Click "New Assignment" to get started.</p>
+        <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-6 rounded-lg shadow-md text-center animate-fade-in" role="alert">
+            <p class="font-bold text-xl mb-2"><i class="fas fa-info-circle mr-2"></i>No assignments found!</p>
+            <p class="text-lg">You haven't created any assignments yet. Click the "Create New Assignment" button above to get started.</p>
         </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{# No specific JS for this page needed beyond base.html and main.js #}
 {% endblock %}

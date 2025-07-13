@@ -3,7 +3,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib import messages
-from django.forms import inlineformset_factory
+from django.forms import formset_factory
 from django.http import JsonResponse, HttpResponse
 from django.db import transaction
 from django.views.decorators.http import require_POST
@@ -11,11 +11,10 @@ from django.utils import timezone
 from django.db.models import Count, Avg, Sum
 from django.template.loader import render_to_string
 import json
-
+import traceback
 from weasyprint import HTML, CSS
-
-from .models import User, Assignment, Score, Student, Class, Subject, Term, Teacher, Attendance, SchoolProfile
-from .forms import AssignmentForm, ScoreForm, AttendanceForm
+from .models import *
+from .forms import *
 
 # --- Helper functions for Role-Based Access Control (RBAC) ---
 def is_teacher(user):
@@ -35,7 +34,7 @@ def home(request):
     Redirects parents to their specific dashboard.
     """
     if request.user.is_parent:
-        return redirect('parent_dashboard') # Redirect parents to their new dashboard
+        return redirect('parent_dashboard')
 
     context = {
         'page_title': 'Dashboard',
@@ -45,7 +44,6 @@ def home(request):
         'available_terms': Term.objects.all().order_by('-start_date'),
     }
 
-    # Common dashboard data for all roles (or for admin/teacher)
     context['total_students'] = Student.objects.count()
     context['total_teachers'] = Teacher.objects.count()
     context['total_classes'] = Class.objects.count()
@@ -64,7 +62,6 @@ def home(request):
         context['class_names'] = json.dumps([c.name for c in class_student_counts_data])
         context['class_student_counts'] = json.dumps([c.student_count for c in class_student_counts_data])
 
-    # Parent-specific data is now handled in parent_dashboard view
     return render(request, 'dashboard.html', context)
 
 
@@ -79,13 +76,11 @@ def parent_dashboard(request):
     parent_children = Student.objects.filter(parent=request.user).order_by('current_class__name', 'last_name', 'first_name')
     available_terms = Term.objects.all().order_by('-start_date')
 
-    # Fetch recent activities for children (e.g., last 5 scores, last 5 attendance records)
     children_data = []
     for child in parent_children:
         recent_scores = Score.objects.filter(student=child).order_by('-date_recorded')[:5]
         recent_attendance = Attendance.objects.filter(student=child).order_by('-date')[:5]
 
-        # Calculate child's overall average for the current term (if applicable)
         current_term = Term.objects.filter(is_current=True).first()
         child_current_term_average = None
         if current_term:
@@ -100,7 +95,7 @@ def parent_dashboard(request):
                 child_current_term_average = (total_score_achieved / total_max_score_possible) * 100
                 child_current_term_average = round(child_current_term_average, 2)
             else:
-                child_current_term_average = 0 # No scores recorded for current term
+                child_current_term_average = 0
 
         children_data.append({
             'child': child,
@@ -117,6 +112,8 @@ def parent_dashboard(request):
     }
     return render(request, 'parent/dashboard.html', context)
 
+
+# --- AJAX endpoint for teacher dashboard chart data ---
 @login_required
 @user_passes_test(is_teacher)
 def teacher_dashboard_data(request):
@@ -211,30 +208,38 @@ def input_scores(request, assignment_id):
         initial_scores_data.append({
             'id': existing_scores[student.id].id if student.id in existing_scores else '',
             'student': student.id,
-            'score_achieved': existing_scores[student.id].score_achieved if student.id in existing_scores else '',
+            'score_achieved': existing_scores[student.id].score_achieved if student.id in existing_scores else None,
         })
 
     print(f"Initial scores data prepared: {len(initial_scores_data)} entries")
 
-    ScoreFormSet = inlineformset_factory(
-        Assignment,
-        Score,
-        form=ScoreForm,
-        fields=['student', 'score_achieved'],
-        extra=0,
+    ScoreFormSet = formset_factory(
+        ScoreForm,
+        extra=len(students_in_class),
         can_delete=False
     )
 
     if request.method == 'POST':
-        formset = ScoreFormSet(request.POST, instance=assignment, initial=initial_scores_data, prefix='scores')
+        formset = ScoreFormSet(request.POST, initial=initial_scores_data, prefix='scores')
+        print(f"Formset is valid (POST): {formset.is_valid()}")
+        if not formset.is_valid():
+            for form_err in formset.errors:
+                print(f"Formset Error: {form_err}")
+            for i, form_obj in enumerate(formset):
+                if form_obj.errors:
+                    print(f"Form {i} errors: {form_obj.errors}")
+
+
         if formset.is_valid():
             with transaction.atomic():
                 for form in formset:
                     score_achieved = form.cleaned_data.get('score_achieved')
-                    student = form.cleaned_data.get('student')
+                    student_id = form.cleaned_data.get('student')
                     score_id = form.cleaned_data.get('id')
 
-                    if score_achieved is not None:
+                    student_obj = get_object_or_404(Student, pk=student_id)
+
+                    if score_achieved is not None and score_achieved != '':
                         if score_id:
                             score_obj = Score.objects.get(id=score_id)
                             score_obj.score_achieved = score_achieved
@@ -243,7 +248,7 @@ def input_scores(request, assignment_id):
                         else:
                             Score.objects.create(
                                 assignment=assignment,
-                                student=student,
+                                student=student_obj,
                                 score_achieved=score_achieved,
                                 recorded_by=request.user
                             )
@@ -252,17 +257,23 @@ def input_scores(request, assignment_id):
         else:
             messages.error(request, "Please correct the errors in the score input.")
 
-    else:
-        formset = ScoreFormSet(instance=assignment, initial=initial_scores_data, prefix='scores')
+    else: # GET request
+        formset = ScoreFormSet(initial=initial_scores_data, prefix='scores')
+        print(f"Formset has {len(formset.forms)} forms for GET request.")
 
     for form in formset:
-        if form.instance.pk:
-            form.fields['student_name'].initial = f"{form.instance.student.first_name} {form.instance.student.last_name}"
-        elif form.initial:
-            student_id = form.initial.get('student')
-            if student_id:
+        student_id = form.initial.get('student')
+        if student_id:
+            try:
                 student = Student.objects.get(pk=student_id)
                 form.fields['student_name'].initial = f"{student.first_name} {student.last_name}"
+            except Student.DoesNotExist:
+                form.fields['student_name'].initial = "N/A (Student not found)"
+                print(f"WARNING: Student with ID {student_id} not found when populating student_name in form.")
+        else:
+            form.fields['student_name'].initial = "N/A (No student ID)"
+            print(f"WARNING: No student ID found for a form in formset.")
+
 
     context = {
         'page_title': f'Input Scores for {assignment.title}',
@@ -286,43 +297,44 @@ def save_scores_ajax(request, assignment_id):
         initial_scores_data.append({
             'id': existing_scores[student.id].id if student.id in existing_scores else '',
             'student': student.id,
-            'score_achieved': existing_scores[student.id].score_achieved if student.id in existing_scores else '',
+            'score_achieved': existing_scores[student.id].score_achieved if student.id in existing_scores else None,
         })
 
-    ScoreFormSet = inlineformset_factory(
-        Assignment,
-        Score,
-        form=ScoreForm,
-        fields=['student', 'score_achieved'],
-        extra=0,
+    ScoreFormSet = formset_factory(
+        ScoreForm,
+        extra=len(students_in_class),
         can_delete=False
     )
 
-    formset = ScoreFormSet(request.POST, instance=assignment, initial=initial_scores_data, prefix='scores')
+    formset = ScoreFormSet(request.POST, initial=initial_scores_data, prefix='scores')
 
     if formset.is_valid():
         try:
             with transaction.atomic():
                 for form in formset:
-                    score_achieved = form.cleaned_data.get('score_achieved')
-                    student = form.cleaned_data.get('student')
-                    score_id = form.cleaned_data.get('id')
+                    if form.cleaned_data:
+                        score_achieved = form.cleaned_data.get('score_achieved')
+                        student_id = form.cleaned_data.get('student')
+                        score_id = form.cleaned_data.get('id')
 
-                    if score_achieved is not None:
-                        if score_id:
-                            score_obj = Score.objects.get(id=score_id)
-                            score_obj.score_achieved = score_achieved
-                            score_obj.recorded_by = request.user
-                            score_obj.save()
-                        else:
-                            Score.objects.create(
-                                assignment=assignment,
-                                student=student,
-                                score_achieved=score_achieved,
-                                recorded_by=request.user
-                            )
+                        student_obj = get_object_or_404(Student, pk=student_id)
+
+                        if score_achieved is not None and score_achieved != '':
+                            if score_id:
+                                score_obj = Score.objects.get(id=score_id)
+                                score_obj.score_achieved = score_achieved
+                                score_obj.recorded_by = request.user
+                                score_obj.save()
+                            else:
+                                Score.objects.create(
+                                    assignment=assignment,
+                                    student=student_obj,
+                                    score_achieved=score_achieved,
+                                    recorded_by=request.user
+                                )
             return JsonResponse({'status': 'success', 'message': 'Scores saved successfully!'})
         except Exception as e:
+            traceback.print_exc()
             return JsonResponse({'status': 'error', 'message': f'Database error: {str(e)}'}, status=500)
     else:
         errors = {form.prefix: form.errors for form in formset if form.errors}
@@ -348,72 +360,58 @@ def select_class_for_attendance(request):
 @login_required
 @user_passes_test(is_teacher)
 def mark_attendance(request, class_slug, date_str):
+    print(f"DEBUG: Entering mark_attendance view for class_slug={class_slug}, date_str={date_str}")
+
     selected_class = get_object_or_404(Class, slug=class_slug)
+    print(f"DEBUG: Found selected_class: {selected_class.name} (ID: {selected_class.id}, Slug: {selected_class.slug})")
+
     attendance_date = timezone.datetime.strptime(date_str, '%Y-%m-%d').date()
+    print(f"DEBUG: Attendance Date: {attendance_date}")
 
-    students_in_class = Student.objects.filter(current_class=selected_class).order_by('last_name', 'first_name')
-
-    initial_attendance_data = []
-    existing_attendance = {att.student_id: att for att in Attendance.objects.filter(_class=selected_class, date=attendance_date)}
-
-    for student in students_in_class:
-        initial_attendance_data.append({
-            'id': existing_attendance[student.id].id if student.id in existing_attendance else '',
-            'student': student.id,
-            'status': existing_attendance[student.id].status if student.id in existing_attendance else 'P',
-        })
-
-    AttendanceFormSet = inlineformset_factory(
-        Class,
-        Attendance,
-        form=AttendanceForm,
-        fields=['student', 'status'],
-        extra=0,
-        can_delete=False
-    )
+    AttendanceFormSetInstance = formset_factory(AttendanceForm, formset=BaseAttendanceFormSet, extra=0)
 
     if request.method == 'POST':
-        formset = AttendanceFormSet(request.POST, instance=selected_class, initial=initial_attendance_data, prefix='attendance')
-        if formset.is_valid():
-            try:
-                with transaction.atomic():
-                    for form in formset:
-                        if form.cleaned_data:
-                            attendance_id = form.cleaned_data.get('id')
-                            student = form.cleaned_data.get('student')
-                            status = form.cleaned_data.get('status')
+        formset = AttendanceFormSetInstance(
+            request.POST,
+            selected_class=selected_class,
+            attendance_date=attendance_date,
+            prefix='attendance'
+        )
 
-                            if attendance_id:
-                                attendance_obj = Attendance.objects.get(id=attendance_id)
-                                attendance_obj.status = status
-                                attendance_obj.recorded_by = request.user
-                                attendance_obj.save()
-                            else:
-                                Attendance.objects.create(
-                                    student=student,
-                                    date=attendance_date,
-                                    status=status,
-                                    _class=selected_class,
-                                    recorded_by=request.user
-                                )
-                messages.success(request, f"Attendance for {selected_class.name} on {attendance_date.strftime('%Y-%m-%d')} saved successfully!")
-                return redirect('mark_attendance', class_slug=class_slug, date_str=date_str)
-            except Exception as e:
-                messages.error(request, f"Error saving attendance: {e}")
+        if formset.is_valid():
+            with transaction.atomic():
+                for form in formset:
+                    if not form.cleaned_data:
+                        continue  # Skip blank form
+                    student_id = form.cleaned_data.get('student')
+                    status = form.cleaned_data.get('status')
+                    student_obj = get_object_or_404(Student, pk=student_id)
+
+                    if form.instance and form.instance.pk:
+                        attendance_obj = form.instance
+                        attendance_obj.status = status
+                        attendance_obj.recorded_by = request.user
+                        attendance_obj.save()
+                    else:
+                        Attendance.objects.create(
+                            student=student_obj,
+                            date=attendance_date,
+                            status=status,
+                            _class=selected_class,
+                            recorded_by=request.user
+                        )
+            messages.success(request, f"Attendance for {selected_class.name} on {attendance_date.strftime('%Y-%m-%d')} saved successfully!")
+            return redirect('mark_attendance', class_slug=class_slug, date_str=date_str)
         else:
             messages.error(request, "Please correct the errors in the attendance input.")
 
     else:
-        formset = AttendanceFormSet(instance=selected_class, initial=initial_attendance_data, prefix='attendance')
-
-    for form in formset:
-        if form.instance.pk:
-            form.fields['student_name'].initial = f"{form.instance.student.first_name} {form.instance.student.last_name}"
-        elif form.initial:
-            student_id = form.initial.get('student')
-            if student_id:
-                student = Student.objects.get(pk=student_id)
-                form.fields['student_name'].initial = f"{student.first_name} {student.last_name}"
+        formset = AttendanceFormSetInstance(
+            selected_class=selected_class,
+            attendance_date=attendance_date,
+            prefix='attendance'
+        )
+        print(f"DEBUG: Formset has {len(formset.forms)} forms for GET request.")
 
     context = {
         'page_title': f'Mark Attendance for {selected_class.name} on {attendance_date.strftime("%B %d, %Y")}',
@@ -431,57 +429,62 @@ def save_attendance_ajax(request, class_slug, date_str):
     selected_class = get_object_or_404(Class, slug=class_slug)
     attendance_date = timezone.datetime.strptime(date_str, '%Y-%m-%d').date()
 
-    students_in_class = Student.objects.filter(current_class=selected_class).order_by('last_name', 'first_name')
-    initial_attendance_data = []
-    existing_attendance = {att.student_id: att for att in Attendance.objects.filter(_class=selected_class, date=attendance_date)}
+    AttendanceFormSetInstance = formset_factory(AttendanceForm, formset=BaseAttendanceFormSet, extra=0)
 
-    for student in students_in_class:
-        initial_attendance_data.append({
-            'id': existing_attendance[student.id].id if student.id in existing_attendance else '',
-            'student': student.id,
-            'status': existing_attendance[student.id].status if student.id in existing_attendance else 'P',
-        })
-
-    AttendanceFormSet = inlineformset_factory(
-        Class,
-        Attendance,
-        form=AttendanceForm,
-        fields=['student', 'status'],
-        extra=0,
-        can_delete=False
+    formset = AttendanceFormSetInstance(
+        request.POST,
+        selected_class=selected_class,
+        attendance_date=attendance_date,
+        prefix='attendance'
     )
-
-    formset = AttendanceFormSet(request.POST, instance=selected_class, initial=initial_attendance_data, prefix='attendance')
 
     if formset.is_valid():
         try:
             with transaction.atomic():
                 for form in formset:
-                    if form.cleaned_data:
-                        attendance_id = form.cleaned_data.get('id')
-                        student = form.cleaned_data.get('student')
-                        status = form.cleaned_data.get('status')
+                    if form.empty_permitted and not form.has_changed():
+                        # Skip forms that are allowed to be empty and unchanged (already marked, untouched)
+                        continue
 
-                        if attendance_id:
-                            attendance_obj = Attendance.objects.get(id=attendance_id)
+                    if not form.cleaned_data:
+                        continue  # Skip blank forms
+
+                    student = form.cleaned_data['student']
+                    if isinstance(student, int):
+                        student = Student.objects.get(pk=student)
+
+                    status = form.cleaned_data['status']
+
+                    if form.instance and form.instance.pk:
+                        attendance_obj = form.instance
+                        # Only update if status changed
+                        if attendance_obj.status != status:
                             attendance_obj.status = status
                             attendance_obj.recorded_by = request.user
                             attendance_obj.save()
-                        else:
-                            Attendance.objects.create(
-                                student=student,
-                                date=attendance_date,
-                                status=status,
-                                _class=selected_class,
-                                recorded_by=request.user
-                            )
+                    else:
+                        Attendance.objects.create(
+                            student=student,
+                            date=attendance_date,
+                            status=status,
+                            _class=selected_class,
+                            recorded_by=request.user
+                        )
+
             return JsonResponse({'status': 'success', 'message': 'Attendance saved successfully!'})
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return JsonResponse({'status': 'error', 'message': f'Database error: {str(e)}'}, status=500)
+
     else:
+        # Debug print each form's errors
+        for i, form in enumerate(formset):
+            print(f"DEBUG: Form {i} cleaned_data: {form.cleaned_data}")
+            print(f"DEBUG: Form {i} errors: {form.errors}")
+
         errors = {form.prefix: form.errors for form in formset if form.errors}
         return JsonResponse({'status': 'error', 'message': 'Validation failed', 'errors': errors}, status=400)
-
 
 @login_required
 @user_passes_test(is_teacher)
@@ -505,7 +508,7 @@ def generate_report_card_pdf(request, student_id, term_id):
 
     if request.user.is_parent and student.parent != request.user:
         messages.error(request, "You are not authorized to view this student's report card.")
-        return redirect('dashboard')
+        return redirect('home')
 
     scores = Score.objects.filter(
         student=student,
