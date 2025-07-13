@@ -368,3 +368,20 @@ class Attendance(models.Model):
     @property
     def class_obj(self):
         return self._class
+    
+
+class Submission(models.Model):
+    assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE, related_name='submissions')
+    student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='submissions')
+    submission_text = models.TextField(blank=True, null=True) # For text-based answers
+    submission_file = models.FileField(upload_to='assignment_submissions/', blank=True, null=True) # For file uploads
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    is_graded = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ('assignment', 'student') # A student can only submit once per assignment
+        ordering = ['-submitted_at']
+        verbose_name_plural = "Submissions"
+
+    def __str__(self):
+        return f"Submission by {self.student.get_full_name()} for {self.assignment.title}"

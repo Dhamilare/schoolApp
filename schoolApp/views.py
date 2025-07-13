@@ -26,7 +26,10 @@ def is_parent(user):
 def is_admin(user):
     return user.is_authenticated and user.is_admin
 
-# --- Existing Views ---
+def is_student(user):
+    return user.is_authenticated and user.is_student
+
+
 @login_required
 def home(request):
     """
@@ -193,16 +196,11 @@ def create_assignment(request):
 def input_scores(request, assignment_id):
     assignment = get_object_or_404(Assignment, id=assignment_id, recorded_by=request.user)
 
-    print(f"Attempting to input scores for Assignment ID: {assignment_id}")
-    print(f"Assignment Title: {assignment.title}")
-    print(f"Assignment Class: {assignment._class.name}")
-
     students_in_class = Student.objects.filter(current_class=assignment._class).order_by('last_name', 'first_name')
-
-    print(f"Students found in class {assignment._class.name}: {students_in_class.count()}")
 
     initial_scores_data = []
     existing_scores = {score.student_id: score for score in Score.objects.filter(assignment=assignment)}
+    existing_submissions = {sub.student_id: sub for sub in Submission.objects.filter(assignment=assignment)} # NEW: Fetch submissions
 
     for student in students_in_class:
         initial_scores_data.append({
@@ -210,8 +208,6 @@ def input_scores(request, assignment_id):
             'student': student.id,
             'score_achieved': existing_scores[student.id].score_achieved if student.id in existing_scores else None,
         })
-
-    print(f"Initial scores data prepared: {len(initial_scores_data)} entries")
 
     ScoreFormSet = formset_factory(
         ScoreForm,
@@ -221,15 +217,6 @@ def input_scores(request, assignment_id):
 
     if request.method == 'POST':
         formset = ScoreFormSet(request.POST, initial=initial_scores_data, prefix='scores')
-        print(f"Formset is valid (POST): {formset.is_valid()}")
-        if not formset.is_valid():
-            for form_err in formset.errors:
-                print(f"Formset Error: {form_err}")
-            for i, form_obj in enumerate(formset):
-                if form_obj.errors:
-                    print(f"Form {i} errors: {form_obj.errors}")
-
-
         if formset.is_valid():
             with transaction.atomic():
                 for form in formset:
@@ -259,27 +246,24 @@ def input_scores(request, assignment_id):
 
     else: # GET request
         formset = ScoreFormSet(initial=initial_scores_data, prefix='scores')
-        print(f"Formset has {len(formset.forms)} forms for GET request.")
 
+    # NEW: Attach submission to each form for display
     for form in formset:
         student_id = form.initial.get('student')
         if student_id:
-            try:
-                student = Student.objects.get(pk=student_id)
-                form.fields['student_name'].initial = f"{student.first_name} {student.last_name}"
-            except Student.DoesNotExist:
-                form.fields['student_name'].initial = "N/A (Student not found)"
-                print(f"WARNING: Student with ID {student_id} not found when populating student_name in form.")
+            student = get_object_or_404(Student, pk=student_id)
+            form.fields['student_name'].initial = f"{student.first_name} {student.last_name}"
+            form.submission = existing_submissions.get(student_id) # Attach submission object
         else:
             form.fields['student_name'].initial = "N/A (No student ID)"
-            print(f"WARNING: No student ID found for a form in formset.")
+            form.submission = None
 
 
     context = {
         'page_title': f'Input Scores for {assignment.title}',
         'assignment': assignment,
         'formset': formset,
-        'students_in_class': students_in_class,
+        'students_in_class': students_in_class, # This might be redundant if formset handles all students
     }
     return render(request, 'teacher/input_scores.html', context)
 
@@ -633,3 +617,110 @@ def subject_list(request):
         'subjects': subjects,
     }
     return render(request, 'teacher/subject_list.html', context)
+
+
+# --- NEW: Student Dashboard View ---
+@login_required
+@user_passes_test(is_student)
+def student_dashboard(request):
+    student_profile = get_object_or_404(Student, user=request.user)
+    current_term = Term.objects.filter(is_current=True).first()
+
+    # Assignments for the student's current class and current term
+    assigned_assignments = Assignment.objects.filter(
+        _class=student_profile.current_class,
+        term=current_term
+    ).order_by('-due_date')
+
+    # Fetch existing scores for these assignments
+    existing_scores = {
+        score.assignment_id: score
+        for score in Score.objects.filter(student=student_profile, assignment__in=assigned_assignments)
+    }
+
+    # Fetch existing submissions for these assignments
+    existing_submissions = {
+        submission.assignment_id: submission
+        for submission in Submission.objects.filter(student=student_profile, assignment__in=assigned_assignments)
+    }
+
+    # Prepare assignments data for display
+    assignments_data = []
+    for assignment in assigned_assignments:
+        score = existing_scores.get(assignment.id)
+        submission = existing_submissions.get(assignment.id)
+        assignments_data.append({
+            'assignment': assignment,
+            'score': score,
+            'submission': submission,
+            'is_submitted': submission is not None,
+            'is_graded': score is not None and score.score_achieved is not None,
+            'is_overdue': assignment.due_date < timezone.localdate() and not submission,
+        })
+
+    # Recent attendance for the student
+    recent_attendance = Attendance.objects.filter(student=student_profile).order_by('-date')[:7] # Last 7 days
+
+    # Calculate overall average for current term
+    overall_average = None
+    if current_term:
+        student_scores_in_current_term = Score.objects.filter(
+            student=student_profile,
+            assignment__term=current_term
+        )
+        total_score_achieved = student_scores_in_current_term.aggregate(Sum('score_achieved'))['score_achieved__sum'] or 0
+        total_max_score_possible = sum(score.assignment.max_score for score in student_scores_in_current_term)
+
+        if total_max_score_possible > 0:
+            overall_average = (total_score_achieved / total_max_score_possible) * 100
+            overall_average = round(overall_average, 2)
+        else:
+            overall_average = 0
+
+    context = {
+        'page_title': f'Student Dashboard - {student_profile.get_full_name()}',
+        'student_profile': student_profile,
+        'current_term': current_term,
+        'assignments_data': assignments_data,
+        'recent_attendance': recent_attendance,
+        'overall_average': overall_average,
+    }
+    return render(request, 'student/dashboard.html', context)
+
+
+# --- NEW: Submit Assignment View for Students ---
+@login_required
+@user_passes_test(is_student)
+def submit_assignment(request, assignment_id):
+    assignment = get_object_or_404(Assignment, id=assignment_id)
+    student_profile = get_object_or_404(Student, user=request.user)
+
+    # Ensure the assignment is for this student's class
+    if assignment._class != student_profile.current_class:
+        messages.error(request, "This assignment is not for your class.")
+        return redirect('student_dashboard')
+
+    # Check if a submission already exists
+    existing_submission = Submission.objects.filter(assignment=assignment, student=student_profile).first()
+
+    if request.method == 'POST':
+        form = SubmissionForm(request.POST, instance=existing_submission)
+        if form.is_valid():
+            submission = form.save(commit=False)
+            submission.assignment = assignment
+            submission.student = student_profile
+            submission.save()
+            messages.success(request, f"Your submission for '{assignment.title}' has been saved!")
+            return redirect('student_dashboard')
+        else:
+            messages.error(request, "There was an error with your submission. Please correct it.")
+    else:
+        form = SubmissionForm(instance=existing_submission)
+
+    context = {
+        'page_title': f'Submit: {assignment.title}',
+        'assignment': assignment,
+        'form': form,
+        'existing_submission': existing_submission,
+    }
+    return render(request, 'student/submit_assignment.html', context)

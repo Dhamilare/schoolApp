@@ -224,3 +224,24 @@ class SubjectForm(forms.ModelForm):
             Field('code', css_class='form-control'),
             Submit('submit', 'Add Subject', css_class='bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-300')
         )
+
+
+class SubmissionForm(forms.ModelForm):
+    class Meta:
+        model = Submission
+        fields = ['submission_text'] # Only text for now
+        widgets = {
+            'submission_text': forms.Textarea(attrs={'rows': 10, 'class': 'form-textarea rounded-md shadow-sm resize-y', 'placeholder': 'Type your answer here...'}),
+        }
+        labels = {
+            'submission_text': 'Your Answer',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.layout = Layout(
+            Field('submission_text', css_class='form-control'),
+            Submit('submit', 'Submit Assignment', css_class='bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-300')
+        )
+

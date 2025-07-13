@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load mathfilters %}
+
+{% block title %}Student Dashboard{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-4 md:p-6 lg:p-8">
+    {# Hero Section: Welcome Message for Student #}
+    <div class="bg-gradient-to-r from-green-500 to-teal-600 text-white p-8 md:p-10 lg:p-12 rounded-xl shadow-2xl mb-12 text-center transform hover:scale-101 transition-transform duration-300 ease-in-out">
+        <h1 class="text-5xl md:text-6xl font-extrabold mb-4 animate-fade-in-down">
+            <i class="fas fa-graduation-cap mr-4 text-yellow-300"></i>Welcome, {{ student_profile.get_full_name }}!
+        </h1>
+        <p class="text-xl md:text-2xl font-light leading-relaxed mb-6 animate-fade-in">
+            Your personalized student portal.
+        </p>
+        <p class="text-lg opacity-90 animate-fade-in-up">
+            Class: <span class="font-semibold text-yellow-200">{{ student_profile.current_class.name|default:"N/A" }}</span> |
+            Current Term: <span class="font-semibold text-yellow-200">{{ current_term.name|default:"N/A" }}</span>
+        </p>
+        {% if overall_average is not None %}
+        <p class="text-lg opacity-90 mt-2 animate-fade-in-up">
+            Overall Term Average: <span class="font-bold text-yellow-200">{{ overall_average }}%</span>
+        </p>
+        {% endif %}
+    </div>
+
+    {# Assignments Section #}
+    <div class="bg-white p-8 rounded-lg shadow-xl border border-gray-200 mb-12 animate-fade-in">
+        <h2 class="text-3xl font-bold text-dark mb-8 text-center"><i class="fas fa-tasks mr-3 text-primary"></i>Your Assignments</h2>
+        {% if assignments_data %}
+        <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Assignment</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Subject</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Due Date</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Score</th>
+                        <th class="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-100">
+                    {% for data in assignments_data %}
+                    <tr class="hover:bg-blue-50 transition-colors duration-200 ease-in-out {% if data.is_overdue and not data.is_submitted %}bg-red-50 text-red-700{% elif data.is_submitted and not data.is_graded %}bg-yellow-50 text-yellow-700{% elif data.is_graded %}bg-green-50 text-green-700{% endif %}">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {{ data.assignment.title }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {{ data.assignment.subject.name }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {{ data.assignment.due_date|date:"M d, Y" }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold">
+                            {% if data.is_graded %}
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Graded</span>
+                            {% elif data.is_submitted %}
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Submitted</span>
+                            {% elif data.is_overdue %}
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Overdue</span>
+                            {% else %}
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Pending</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {% if data.score.score_achieved is not None %}
+                                {{ data.score.score_achieved }} / {{ data.assignment.max_score }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                            {% if not data.is_graded %}
+                                <a href="{% url 'submit_assignment' data.assignment.id %}" class="text-indigo-600 hover:text-indigo-900 mr-4 transition duration-200">
+                                    {% if data.is_submitted %}
+                                        <i class="fas fa-edit mr-1"></i>Edit Submission
+                                    {% else %}
+                                        <i class="fas fa-upload mr-1"></i>Submit
+                                    {% endif %}
+                                </a>
+                            {% else %}
+                                <span class="text-gray-400 cursor-not-allowed">
+                                    <i class="fas fa-check-circle mr-1"></i>Graded
+                                </span>
+                            {% endif %}
+                            {% if data.submission %}
+                                <button onclick="showSubmission('{{ data.assignment.title|escapejs }}', '{{ data.submission.submission_text|escapejs }}')" class="text-blue-600 hover:text-blue-900 transition duration-200 ml-2">
+                                    <i class="fas fa-eye mr-1"></i>View
+                                </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-6 rounded-lg shadow-md mt-4 animate-fade-in" role="alert">
+            <p class="font-bold text-xl mb-2"><i class="fas fa-info-circle mr-2"></i>No assignments found for your class and current term!</p>
+            <p class="text-lg">Please check back later or contact your teacher.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    {# Recent Attendance Section #}
+    <div class="bg-white p-8 rounded-lg shadow-xl border border-gray-200 mb-12 animate-fade-in">
+        <h2 class="text-3xl font-bold text-dark mb-8 text-center"><i class="fas fa-calendar-check mr-3 text-accent"></i>Recent Attendance</h2>
+        {% if recent_attendance %}
+        <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-md">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Date</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Class</th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-100">
+                    {% for record in recent_attendance %}
+                    <tr class="hover:bg-blue-50 transition-colors duration-200 ease-in-out">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {{ record.date|date:"M d, Y" }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                            {{ record._class.name }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold">
+                            {% if record.status == 'P' %}
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Present</span>
+                            {% elif record.status == 'A' %}
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Absent</span>
+                            {% elif record.status == 'L' %}
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Late</span>
+                            {% elif record.status == 'E' %}
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">Excused</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-6 rounded-lg shadow-md mt-4 animate-fade-in" role="alert">
+            <p class="font-bold text-xl mb-2"><i class="fas fa-info-circle mr-2"></i>No recent attendance records found.</p>
+            <p class="text-lg">Your attendance will appear here once recorded.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    {# Submission View Modal #}
+    <div id="submissionModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden z-[100]">
+        <div class="bg-white p-8 rounded-lg shadow-xl max-w-2xl w-full mx-auto border animate-fade-in-down">
+            <h3 id="submissionTitle" class="text-2xl font-bold mb-4 text-dark"></h3>
+            <div class="bg-gray-50 p-4 rounded-md border border-gray-200 max-h-96 overflow-y-auto mb-4">
+                <p id="submissionText" class="text-text_color whitespace-pre-wrap"></p>
+            </div>
+            <button id="closeSubmissionModal" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition duration-300 transform hover:scale-105">
+                Close
+            </button>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/main.js' %}"></script>
+<script>
+    function showSubmission(title, text) {
+        document.getElementById('submissionTitle').textContent = `Submission for: ${title}`;
+        document.getElementById('submissionText').textContent = text;
+        document.getElementById('submissionModal').classList.remove('hidden');
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const submissionModal = document.getElementById('submissionModal');
+        const closeSubmissionModal = document.getElementById('closeSubmissionModal');
+
+        if (closeSubmissionModal) {
+            closeSubmissionModal.addEventListener('click', () => {
+                submissionModal.classList.add('hidden');
+            });
+        }
+    });
+</script>
+{% endblock %}

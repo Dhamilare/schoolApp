@@ -184,52 +184,42 @@
         const studentsPerClassCtx = document.getElementById('studentsPerClassChart');
         if (studentsPerClassCtx) {
             new Chart(studentsPerClassCtx, {
-                type: 'bar',
+                type: 'pie', // Changed to pie chart
                 data: {
                     labels: classNames,
                     datasets: [{
                         label: 'Number of Students',
                         data: classStudentCounts,
-                        backgroundColor: [
-                            'rgba(79, 70, 229, 0.6)',
-                            'rgba(99, 102, 241, 0.6)',
-                            'rgba(236, 72, 153, 0.6)',
-                            'rgba(34, 197, 94, 0.6)',
-                            'rgba(251, 191, 36, 0.6)',
-                            'rgba(244, 63, 94, 0.6)',
-                        ],
-                        borderColor: [
-                            'rgba(79, 70, 229, 1)',
-                            'rgba(99, 102, 241, 1)',
-                            'rgba(236, 72, 153, 1)',
-                            'rgba(34, 197, 94, 1)',
-                            'rgba(251, 191, 36, 1)',
-                            'rgba(244, 63, 94, 1)',
-                        ],
+                        backgroundColor: classStudentCounts.map(() => getRandomColor(0.8)), // Generate colors dynamically
+                        borderColor: classStudentCounts.map(() => getRandomColor(1)),
                         borderWidth: 1
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'Number of Students'
-                            }
-                        },
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Class'
-                            }
-                        }
-                    },
                     plugins: {
                         legend: {
-                            display: false
+                            position: 'top', // Position legend at the top
+                            labels: {
+                                font: {
+                                    size: 14
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed !== null) {
+                                        label += context.parsed; // Display raw count for pie chart
+                                    }
+                                    return label;
+                                }
+                            }
                         }
                     }
                 }
