@@ -71,6 +71,10 @@
                         <a href="{% url 'attendance_history' %}" class="inline-flex items-center justify-center bg-white bg-opacity-20 hover:bg-opacity-30 text-white font-semibold py-2 px-4 rounded-md transition duration-300 shadow-md">
                             <i class="fas fa-history mr-2"></i>View Attendance History
                         </a>
+                        {# CHANGED: Link to subject_list for management #}
+                        <a href="{% url 'subject_list' %}" class="inline-flex items-center justify-center bg-white bg-opacity-20 hover:bg-opacity-30 text-white font-semibold py-2 px-4 rounded-md transition duration-300 shadow-md">
+                            <i class="fas fa-book-medical mr-2"></i>Manage Subjects
+                        </a>
                     </div>
                 </div>
             {% endif %}
@@ -120,24 +124,24 @@
         <h2 class="text-3xl font-bold text-dark mb-8 text-center"><i class="fas fa-chart-pie mr-3 text-accent"></i>My Performance Overview</h2>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {# Students per Class Chart Card #}
-            <div class="bg-gray-50 p-6 rounded-xl shadow-inner border border-gray-200 min-h-[320px] flex flex-col overflow-hidden"> {# Added min-h and flex-col, overflow-hidden #}
+            <div class="bg-gray-50 p-6 rounded-xl shadow-inner border border-gray-200 min-h-[320px] flex flex-col overflow-hidden">
                 <h3 class="text-xl font-semibold text-gray-800 mb-4">Students per Class</h3>
-                <div class="flex-grow"> {# Allows canvas to fill available space #}
-                    <canvas id="studentsPerClassChart" class="w-full h-full"></canvas> {# Changed h-80 to h-full #}
+                <div class="flex-grow">
+                    <canvas id="studentsPerClassChart" class="w-full h-full"></canvas>
                 </div>
             </div>
             {# Average Scores by Subject Chart Card #}
-            <div class="bg-gray-50 p-6 rounded-xl shadow-inner border border-gray-200 min-h-[320px] flex flex-col overflow-hidden"> {# Added min-h and flex-col, overflow-hidden #}
+            <div class="bg-gray-50 p-6 rounded-xl shadow-inner border border-gray-200 min-h-[320px] flex flex-col overflow-hidden">
                 <h3 class="text-xl font-semibold text-gray-800 mb-4">Average Scores by Subject (My Assignments)</h3>
-                <div class="flex-grow"> {# Allows canvas to fill available space #}
-                    <canvas id="avgScoresBySubjectChart" class="w-full h-full"></canvas> {# Changed h-80 to h-full #}
+                <div class="flex-grow">
+                    <canvas id="avgScoresBySubjectChart" class="w-full h-full"></canvas>
                 </div>
             </div>
             {# Daily Attendance Summary Chart Card #}
-            <div class="bg-gray-50 p-6 rounded-xl shadow-inner border border-gray-200 lg:col-span-2 min-h-[320px] flex flex-col overflow-hidden"> {# Added min-h and flex-col, overflow-hidden #}
+            <div class="bg-gray-50 p-6 rounded-xl shadow-inner border border-gray-200 lg:col-span-2 min-h-[320px] flex flex-col overflow-hidden">
                 <h3 class="text-xl font-semibold text-gray-800 mb-4">Daily Attendance Summary (My Classes)</h3>
-                <div class="flex-grow"> {# Allows canvas to fill available space #}
-                    <canvas id="dailyAttendanceChart" class="w-full h-full"></canvas> {# Changed h-80 to h-full #}
+                <div class="flex-grow">
+                    <canvas id="dailyAttendanceChart" class="w-full h-full"></canvas>
                 </div>
             </div>
         </div>
@@ -207,7 +211,7 @@
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false, // Important for height control
+                    maintainAspectRatio: false,
                     scales: {
                         y: {
                             beginAtZero: true,
@@ -259,7 +263,7 @@
                             },
                             options: {
                                 responsive: true,
-                                maintainAspectRatio: false, // Important for height control
+                                maintainAspectRatio: false,
                                 plugins: {
                                     legend: {
                                         position: 'top',
@@ -325,7 +329,7 @@
                             },
                             options: {
                                 responsive: true,
-                                maintainAspectRatio: false, // Important for height control
+                                maintainAspectRatio: false,
                                 scales: {
                                     x: {
                                         stacked: true,

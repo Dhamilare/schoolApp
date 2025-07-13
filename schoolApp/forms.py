@@ -202,3 +202,25 @@ AttendanceFormSet = formset_factory(
     formset=BaseAttendanceFormSet,
     extra=0
 )
+
+class SubjectForm(forms.ModelForm):
+    class Meta:
+        model = Subject
+        fields = ['name', 'code']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-input rounded-md shadow-sm'}),
+            'code': forms.TextInput(attrs={'class': 'form-input rounded-md shadow-sm'}),
+        }
+        labels = {
+            'name': 'Subject Name',
+            'code': 'Subject Code (Optional)',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.layout = Layout(
+            Field('name', css_class='form-control'),
+            Field('code', css_class='form-control'),
+            Submit('submit', 'Add Subject', css_class='bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-300')
+        )

@@ -570,3 +570,66 @@ def generate_report_card_pdf(request, student_id, term_id):
     response = HttpResponse(pdf_file, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="Report_Card_{student.first_name}_{student.last_name}_{term.name}.pdf"'
     return response
+
+
+# --- Subject Management Views ---
+@login_required
+@user_passes_test(is_teacher) # Only teachers can add subjects
+def create_subject(request):
+    if request.method == 'POST':
+        form = SubjectForm(request.POST)
+        if form.is_valid():
+            subject = form.save()
+            messages.success(request, f"Subject '{subject.name}' added successfully!")
+            return redirect('subject_list') # Redirect to subject list after creation
+    else:
+        form = SubjectForm()
+
+    context = {
+        'page_title': 'Add New Subject',
+        'form': form,
+    }
+    return render(request, 'teacher/create_subject.html', context)
+
+@login_required
+@user_passes_test(is_teacher) # Only teachers can update subjects
+def update_subject(request, pk):
+    subject = get_object_or_404(Subject, pk=pk)
+    if request.method == 'POST':
+        form = SubjectForm(request.POST, instance=subject)
+        if form.is_valid():
+            subject = form.save()
+            messages.success(request, f"Subject '{subject.name}' updated successfully!")
+            return redirect('subject_list') # Redirect to subject list after update
+    else:
+        form = SubjectForm(instance=subject)
+
+    context = {
+        'page_title': f'Update Subject: {subject.name}',
+        'form': form,
+        'subject': subject,
+    }
+    return render(request, 'teacher/update_subject.html', context) # NEW TEMPLATE: update_subject.html
+
+@login_required
+@user_passes_test(is_teacher) # Only teachers can delete subjects
+@require_POST # Ensure this view only accepts POST requests for security
+def delete_subject(request, pk):
+    subject = get_object_or_404(Subject, pk=pk)
+    subject_name = subject.name
+    try:
+        subject.delete()
+        messages.success(request, f"Subject '{subject_name}' deleted successfully!")
+    except Exception as e:
+        messages.error(request, f"Error deleting subject '{subject_name}': {e}")
+    return redirect('subject_list') # Redirect to subject list after deletion
+
+@login_required
+@user_passes_test(is_teacher) # Only teachers can view subject list
+def subject_list(request):
+    subjects = Subject.objects.all().order_by('name')
+    context = {
+        'page_title': 'Manage Subjects',
+        'subjects': subjects,
+    }
+    return render(request, 'teacher/subject_list.html', context)

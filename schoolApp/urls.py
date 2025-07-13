@@ -17,4 +17,10 @@ urlpatterns = [
     path('report_card/pdf/<int:student_id>/<int:term_id>/', views.generate_report_card_pdf, name='generate_report_card_pdf'),
     path('parent-dashboard/', views.parent_dashboard, name='parent_dashboard'),
     path('api/teacher_dashboard_data/', views.teacher_dashboard_data, name='teacher_dashboard_data'),
+
+    # Subject Management
+    path('subjects/', views.subject_list, name='subject_list'), # NEW: List all subjects
+    path('subjects/create/', views.create_subject, name='create_subject'),
+    path('subjects/update/<int:pk>/', views.update_subject, name='update_subject'), # NEW: Update subject
+    path('subjects/delete/<int:pk>/', views.delete_subject, name='delete_subject'), # NEW: Delete subject
 ]
