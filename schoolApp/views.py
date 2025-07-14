@@ -32,12 +32,11 @@ def is_student(user):
 
 @login_required
 def home(request):
-    """
-    Renders the home page for authenticated users with dashboard data.
-    Redirects parents to their specific dashboard.
-    """
     if request.user.is_parent:
         return redirect('parent_dashboard')
+    
+    if request.user.is_student:
+        return redirect('student_dashboard')
 
     context = {
         'page_title': 'Dashboard',
@@ -72,10 +71,6 @@ def home(request):
 @login_required
 @user_passes_test(is_parent)
 def parent_dashboard(request):
-    """
-    Renders the dedicated dashboard for parent users.
-    Displays information about their children.
-    """
     parent_children = Student.objects.filter(parent=request.user).order_by('current_class__name', 'last_name', 'first_name')
     available_terms = Term.objects.all().order_by('-start_date')
 
@@ -724,3 +719,73 @@ def submit_assignment(request, assignment_id):
         'existing_submission': existing_submission,
     }
     return render(request, 'student/submit_assignment.html', context)
+
+
+@login_required
+@user_passes_test(is_teacher)
+def create_student(request):
+    if request.method == 'POST':
+        form = StudentUserCreationForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Student account created successfully.")
+            return redirect('student_list')
+        else:
+            messages.error(request, "There was an error creating the student.")
+    else:
+        form = StudentUserCreationForm()
+
+    return render(request, 'teacher/create_student.html', {
+        'form': form,
+        'page_title': "Create Student",
+    })
+
+@login_required
+@user_passes_test(is_teacher) 
+def student_list(request):
+    students = Student.objects.all().order_by('current_class__name', 'last_name', 'first_name')
+    context = {
+        'page_title': 'Manage Students',
+        'students': students,
+    }
+    return render(request, 'teacher/student_list.html', context)
+
+
+@login_required
+@user_passes_test(is_teacher)
+def update_student(request, pk):
+    student = get_object_or_404(Student, pk=pk)
+    user = student.user
+
+    if request.method == 'POST':
+        form = StudentUserUpdateForm(request.POST, instance=student, user_instance=user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Student '{student.get_full_name()}' updated successfully.")
+            return redirect('student_list')
+        else:
+            messages.error(request, "There was an error updating the student.")
+    else:
+        form = StudentUserUpdateForm(instance=student, user_instance=user)
+
+    return render(request, 'teacher/update_student.html', {
+        'form': form,
+        'student': student,
+        'page_title': f"Update Student: {student.get_full_name()}",
+    })
+
+@login_required
+@user_passes_test(is_teacher)
+@require_POST 
+def delete_student(request, pk): 
+    student = get_object_or_404(Student, pk=pk)
+    student_name = student.get_full_name()
+    try:
+        if student.user:
+            student.user.delete()
+        else:
+            student.delete()
+        messages.success(request, f"Student '{student_name}' and associated account deleted successfully!")
+    except Exception as e:
+        messages.error(request, f"Error deleting student '{student_name}': {e}")
+    return redirect('student_list')

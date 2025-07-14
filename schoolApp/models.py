@@ -7,6 +7,7 @@ class User(AbstractUser):
     is_teacher = models.BooleanField(default=False, help_text="Designates whether this user is a teacher.")
     is_parent = models.BooleanField(default=False, help_text="Designates whether this user is a parent.")
     is_admin = models.BooleanField(default=False, help_text="Designates whether this user is an administrator.")
+    is_student = models.BooleanField(default=False, help_text="Designates whether this user is a student.")
     profile_picture = models.ImageField(
         upload_to='profile_pics/',
         blank=True,
@@ -22,8 +23,8 @@ class User(AbstractUser):
 
     class Meta:
         verbose_name = "User"
-        verbose_name_plural = "Users" # <<< FIXED
-        app_label = 'schoolApp' # Ensure app_label is explicitly set if issues persist (good practice)
+        verbose_name_plural = "Users" 
+        app_label = 'schoolApp'
 
 
     def __str__(self):
@@ -152,6 +153,7 @@ class Teacher(models.Model):
 
 # --- Student Model ---
 class Student(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, null=True, blank=True, related_name='student_profile')
     first_name = models.CharField(max_length=100, help_text="Student's first name.")
     last_name = models.CharField(max_length=100, help_text="Student's last name.")
     student_id = models.CharField(max_length=50, unique=True, blank=True, null=True, help_text="Unique student identification number.")
@@ -183,7 +185,7 @@ class Student(models.Model):
 
     class Meta:
         verbose_name = "Student"
-        verbose_name_plural = "Students" # <<< FIXED
+        verbose_name_plural = "Students" 
         unique_together = ('first_name', 'last_name', 'date_of_birth')
         ordering = ['current_class__name', 'last_name', 'first_name']
         app_label = 'schoolApp'
@@ -191,6 +193,8 @@ class Student(models.Model):
     def __str__(self):
         return f"{self.first_name} {self.last_name} ({self.current_class.name if self.current_class else 'Unassigned'})"
 
+    def get_full_name(self):
+        return f"{self.first_name} {self.last_name}"
 
 # --- Grade Management Models ---
 
@@ -368,6 +372,10 @@ class Attendance(models.Model):
     @property
     def class_obj(self):
         return self._class
+    
+    @property 
+    def class_name_display(self):
+        return self._class.name if self._class else "N/A"
     
 
 class Submission(models.Model):

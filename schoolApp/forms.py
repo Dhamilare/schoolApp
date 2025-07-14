@@ -1,8 +1,12 @@
 from django import forms
-from .models import * # Imports all models from your models.py
+from .models import *
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Layout, Submit, Row, Column, Field
 from django.forms import BaseFormSet, formset_factory
+from django.contrib.auth.forms import UserCreationForm
+from django.db import transaction
+
+GENDER_CHOICES = [('Male', 'Male'), ('Female', 'Female'), ('Other', 'Other')]
 
 
 # Form for creating or editing an Assignment
@@ -245,3 +249,81 @@ class SubmissionForm(forms.ModelForm):
             Submit('submit', 'Submit Assignment', css_class='bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-300')
         )
 
+
+class StudentUserCreationForm(UserCreationForm):
+    first_name = forms.CharField(max_length=100, required=True)
+    last_name = forms.CharField(max_length=100, required=True)
+    date_of_birth = forms.DateField(required=False, widget=forms.DateInput(attrs={'type': 'date'}))
+    gender = forms.ChoiceField(choices=GENDER_CHOICES, required=False)
+    current_class = forms.ModelChoiceField(queryset=Class.objects.all().order_by('name'), required=False)
+    parent = forms.ModelChoiceField(queryset=User.objects.filter(is_parent=True).order_by('last_name', 'first_name'), required=False)
+    student_id = forms.CharField(max_length=50, required=False)
+
+    class Meta(UserCreationForm.Meta):
+        model = User
+        fields = UserCreationForm.Meta.fields + (
+            'first_name', 'last_name', 'date_of_birth', 'gender', 'current_class', 'parent', 'student_id'
+        )
+
+    @transaction.atomic
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.first_name = self.cleaned_data['first_name']
+        user.last_name = self.cleaned_data['last_name']
+        user.is_student = True
+        user.user_type = 'student'
+        if commit:
+            user.save()
+
+        student = Student(
+            user=user,
+            first_name=self.cleaned_data['first_name'],
+            last_name=self.cleaned_data['last_name'],
+            date_of_birth=self.cleaned_data['date_of_birth'],
+            gender=self.cleaned_data['gender'],
+            current_class=self.cleaned_data['current_class'],
+            parent=self.cleaned_data['parent'],
+            student_id=self.cleaned_data['student_id']
+        )
+        if commit:
+            student.save()
+        return student
+    
+
+class StudentUserUpdateForm(forms.ModelForm):
+    password = forms.CharField(
+        label="New Password", required=False, widget=forms.PasswordInput()
+    )
+    confirm_password = forms.CharField(
+        label="Confirm New Password", required=False, widget=forms.PasswordInput()
+    )
+
+    class Meta:
+        model = Student
+        fields = ['first_name', 'last_name', 'date_of_birth', 'gender', 'current_class', 'parent', 'student_id']
+
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user_instance', None)
+        super().__init__(*args, **kwargs)
+
+    def clean(self):
+        cleaned_data = super().clean()
+        pw1 = cleaned_data.get('password')
+        pw2 = cleaned_data.get('confirm_password')
+        if pw1 or pw2:
+            if pw1 != pw2:
+                raise forms.ValidationError("Passwords do not match.")
+        return cleaned_data
+
+    def save(self, commit=True):
+        student = super().save(commit=False)
+        if self.user:
+            self.user.first_name = student.first_name
+            self.user.last_name = student.last_name
+            if self.cleaned_data.get('password'):
+                self.user.set_password(self.cleaned_data['password'])
+            if commit:
+                self.user.save()
+        if commit:
+            student.save()
+        return student

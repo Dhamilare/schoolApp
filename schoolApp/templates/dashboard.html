@@ -1,5 +1,5 @@
 {# core_app/templates/core_app/home.html #}
-{% extends 'base.html' %}
+{% extends 'base.html' %} {# Ensure this extends 'core_app/base.html' if that's your base template #}
 {% load static %}
 {% load mathfilters %}
 
@@ -74,6 +74,10 @@
                         {# CHANGED: Link to subject_list for management #}
                         <a href="{% url 'subject_list' %}" class="inline-flex items-center justify-center bg-white bg-opacity-20 hover:bg-opacity-30 text-white font-semibold py-2 px-4 rounded-md transition duration-300 shadow-md">
                             <i class="fas fa-book-medical mr-2"></i>Manage Subjects
+                        </a>
+                        {# NEW: Link to Student List #}
+                        <a href="{% url 'student_list' %}" class="inline-flex items-center justify-center bg-white bg-opacity-20 hover:bg-opacity-30 text-white font-semibold py-2 px-4 rounded-md transition duration-300 shadow-md">
+                            <i class="fas fa-user-graduate mr-2"></i>Manage Students
                         </a>
                     </div>
                 </div>

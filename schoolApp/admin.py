@@ -1,15 +1,16 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, SchoolProfile, Subject, Class, Teacher, Student, Term, Assignment, Score, Attendance
+from .models import *
 
 @admin.register(User)
-class UserAdmin(BaseUserAdmin):
+class CustomUserAdmin(BaseUserAdmin):
     fieldsets = BaseUserAdmin.fieldsets + (
-        (('Custom Fields'), {'fields': ('is_teacher', 'is_parent', 'is_admin', 'profile_picture', 'phone_number')}),
+        (('Role Information'), {'fields': ('is_teacher', 'is_parent', 'is_admin', 'is_student')}),
+        (('Profile Details'), {'fields': ('profile_picture', 'phone_number')}),
     )
-    list_display = ('username', 'email', 'first_name', 'last_name', 'is_teacher', 'is_parent', 'is_admin', 'is_staff')
-    list_filter = ('is_teacher', 'is_parent', 'is_admin', 'is_staff', 'is_superuser')
-    search_fields = ('username', 'first_name', 'last_name', 'email')
+    list_display = ('username', 'email', 'first_name', 'last_name', 'is_staff', 'is_teacher', 'is_parent', 'is_admin', 'is_student') 
+    search_fields = ('username', 'first_name', 'last_name', 'email', 'phone_number')
+
 
 
 @admin.register(SchoolProfile)
@@ -20,9 +21,9 @@ class SchoolProfileAdmin(admin.ModelAdmin):
 
 @admin.register(Subject)
 class SubjectAdmin(admin.ModelAdmin):
-    list_display = ('name', 'code', 'slug',) # Added slug
+    list_display = ('name', 'code', 'slug',)
     search_fields = ('name', 'code',)
-    prepopulated_fields = {'slug': ('name',)} # <<< NEW: Auto-populate slug from name
+    prepopulated_fields = {'slug': ('name',)} 
 
 
 @admin.register(Class)
@@ -92,3 +93,19 @@ class AttendanceAdmin(admin.ModelAdmin):
     search_fields = ('student__first_name', 'student__last_name', '_class__name')
     date_hierarchy = 'date'
     raw_id_fields = ('student', '_class', 'recorded_by')
+
+
+@admin.register(Submission)
+class SubmissionAdmin(admin.ModelAdmin):
+    list_display = ('assignment', 'student', 'submitted_at', 'is_graded', 'preview_submission_text')
+    list_filter = ('assignment__subject', 'assignment___class', 'is_graded', 'submitted_at')
+    search_fields = ('assignment__title', 'student__first_name', 'student__last_name', 'submission_text')
+    readonly_fields = ('assignment', 'student', 'submitted_at', 'submission_text') # Submissions should generally not be edited directly here
+    raw_id_fields = ('assignment', 'student')
+
+    def preview_submission_text(self, obj):
+        """Displays a truncated version of the submission text."""
+        if obj.submission_text:
+            return obj.submission_text[:100] + '...' if len(obj.submission_text) > 100 else obj.submission_text
+        return "No text submitted"
+    preview_submission_text.short_description = 'Submission Preview'
