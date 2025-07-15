@@ -1,0 +1,116 @@
+{# core_app/templates/core_app/teacher/submission_detail.html #}
+{% extends 'base.html' %}
+{% load static %}
+{% load custom_filters %}
+
+{% block title %}Submission Detail{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-4 md:p-6 lg:p-8 font-inter">
+    <div class="flex flex-col sm:flex-row justify-between items-center mb-8 bg-white p-6 rounded-xl shadow-md border border-gray-200">
+        <h1 class="text-4xl font-extrabold text-gray-800 flex items-center mb-4 sm:mb-0">
+            <i class="fas fa-file-check mr-4 text-indigo-500"></i>Submission by: <span class="text-purple-500">{{ submission.student.get_full_name }}</span>
+        </h1>
+        <a href="{% url 'assignment_submissions' submission.assignment.id %}" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center group">
+            <i class="fas fa-arrow-left mr-3 group-hover:rotate-6"></i>Back to Submissions
+        </a>
+    </div>
+
+    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-3xl mx-auto border border-gray-200 animate-fade-in">
+        <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200 text-blue-800">
+            <h2 class="text-2xl font-semibold mb-3">Assignment Details</h2>
+            <p class="mb-2"><strong class="text-gray-700">Title:</strong> {{ submission.assignment.title }}</p>
+            <p class="mb-2"><strong class="text-gray-700">Subject:</strong> {{ submission.assignment.subject.name }}</p>
+            <p class="mb-2"><strong class="text-gray-700">Class:</strong> {{ submission.assignment.class_name_display }}</p>
+            <p class="mb-2"><strong class="text-gray-700">Due Date:</strong> {{ submission.assignment.due_date|date:"F d, Y" }}</p>
+            <p class="mb-2"><strong class="text-gray-700">Type:</strong> {{ submission.assignment.get_assignment_type_display }}</p>
+        </div>
+
+        <div class="mb-6 p-4 bg-green-50 rounded-lg border border-green-200 text-green-800">
+            <h2 class="text-2xl font-semibold mb-3">Submission Details</h2>
+            <p class="mb-2"><strong class="text-gray-700">Submitted By:</strong> {{ submission.student.get_full_name }}</p>
+            <p class="mb-2"><strong class="text-gray-700">Submission Date:</strong> {{ submission.submitted_at|date:"F d, Y H:i" }}</p>
+            <p class="mb-2"><strong class="text-gray-700">Status:</strong> 
+                {% if submission.is_graded %}
+                    <span class="px-2 py-1 inline-flex text-sm leading-5 font-semibold rounded-full bg-green-100 text-green-800">Graded</span>
+                {% else %}
+                    <span class="px-2 py-1 inline-flex text-sm leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Pending Grading</span>
+                {% endif %}
+            </p>
+        </div>
+
+        {% if submission.assignment.assignment_type == 'text_file' %}
+            <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200 text-gray-800">
+                <h3 class="text-xl font-semibold mb-3">Submitted Text</h3>
+                <div class="bg-white p-4 rounded-md border border-gray-300 min-h-[100px] max-h-[300px] overflow-y-auto text-gray-900 leading-relaxed">
+                    {% if submission.submission_text %}
+                        <p>{{ submission.submission_text|linebreaksbr }}</p>
+                    {% else %}
+                        <p class="text-gray-500 italic">No text submission provided.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200 text-gray-800">
+                <h3 class="text-xl font-semibold mb-3">Submitted File</h3>
+                {% if submission.submission_file %}
+                    <a href="{{ submission.submission_file.url }}" target="_blank" class="inline-flex items-center text-blue-600 hover:text-blue-800 font-medium transition duration-300">
+                        <i class="fas fa-file-arrow-down mr-2"></i>Download File: {{ submission.submission_file.name|split_string:"/"|last_item }} {# CHANGED THIS LINE #}
+                    </a>
+                {% else %}
+                    <p class="text-gray-500 italic">No file submission provided.</p>
+                {% endif %}
+            </div>
+        {% elif submission.assignment.assignment_type == 'mcq' %}
+            <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200 text-gray-800">
+                <h3 class="text-xl font-semibold mb-3">Student's Answers (MCQ)</h3>
+                {% if student_answers %}
+                    <div class="space-y-4">
+                        {% for student_answer in student_answers %}
+                            <div class="bg-white p-4 rounded-md shadow-sm border border-gray-300">
+                                <p class="font-semibold text-gray-900 mb-2">Q: {{ student_answer.question.question_text }}</p>
+                                <p class="text-gray-700 ml-4">
+                                    <strong class="mr-2">Your Answer:</strong>
+                                    {% if student_answer.chosen_choice %}
+                                        {{ student_answer.chosen_choice.choice_text }}
+                                        {% if student_answer.is_correct %}
+                                            <span class="text-green-600 ml-2"><i class="fas fa-check-circle"></i> Correct</span>
+                                        {% else %}
+                                            <span class="text-red-600 ml-2"><i class="fas fa-times-circle"></i> Incorrect</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-gray-500 italic">No answer provided</span>
+                                    {% endif %}
+                                </p>
+                                <p class="text-gray-700 ml-4">
+                                    <strong class="mr-2">Correct Answer:</strong>
+                                    {% for choice in student_answer.question.choices.all %}
+                                        {% if choice.is_correct %}
+                                            {{ choice.choice_text }}
+                                        {% endif %}
+                                    {% endfor %}
+                                </p>
+                                <p class="text-gray-700 ml-4">
+                                    <strong class="mr-2">Points:</strong> {{ student_answer.points_awarded|floatformat:2 }} / {{ student_answer.question.points|floatformat:2 }}
+                                </p>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div class="mt-4 text-right text-lg font-bold text-gray-800">
+                        Total Score: {{ total_score_achieved|floatformat:2 }} / {{ submission.assignment.max_score|floatformat:2 }}
+                    </div>
+                {% else %}
+                    <p class="text-gray-500 italic">No answers found for this MCQ submission.</p>
+                {% endif %}
+            </div>
+        {% endif %}
+
+        <div class="flex justify-end mt-8">
+            {# Link to input scores for this assignment, useful for manual grading #}
+            <a href="{% url 'input_scores' submission.assignment.id %}" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center">
+                <i class="fas fa-marker mr-3"></i>Go to Grading
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

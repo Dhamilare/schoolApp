@@ -109,3 +109,27 @@ class SubmissionAdmin(admin.ModelAdmin):
             return obj.submission_text[:100] + '...' if len(obj.submission_text) > 100 else obj.submission_text
         return "No text submitted"
     preview_submission_text.short_description = 'Submission Preview'
+
+class ChoiceInline(admin.StackedInline): # Or admin.TabularInline for a more compact view
+    model = Choice
+    extra = 4 # Show 4 empty choice forms by default
+    max_num = 4 # Limit to 4 choices per question
+    min_num = 2 # Require at least 2 choices
+    can_delete = True
+
+
+
+@admin.register(Question)
+class QuestionAdmin(admin.ModelAdmin):
+    list_display = ('question_text', 'assignment', 'points')
+    list_filter = ('assignment__subject', 'assignment___class', 'assignment__term')
+    search_fields = ('question_text', 'assignment__title')
+    raw_id_fields = ('assignment',) # Use raw_id_fields for assignment
+    inlines = [ChoiceInline] # Attach ChoiceInline here
+
+@admin.register(StudentAnswer)
+class StudentAnswerAdmin(admin.ModelAdmin):
+    list_display = ('submission', 'question', 'chosen_choice', 'is_correct', 'points_awarded')
+    list_filter = ('submission__assignment', 'question__assignment', 'is_correct')
+    search_fields = ('submission__student__first_name', 'submission__student__last_name', 'question__question_text')
+    raw_id_fields = ('submission', 'question', 'chosen_choice')

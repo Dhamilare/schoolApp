@@ -8,7 +8,7 @@ from django.http import JsonResponse, HttpResponse
 from django.db import transaction
 from django.views.decorators.http import require_POST
 from django.utils import timezone
-from django.db.models import Count, Avg, Sum
+from django.db.models import Count, Avg, Sum, F
 from django.template.loader import render_to_string
 import json
 import traceback
@@ -156,12 +156,16 @@ def teacher_dashboard_data(request):
 @login_required
 @user_passes_test(is_teacher)
 def assignment_list(request):
-    teacher_assignments = Assignment.objects.filter(recorded_by=request.user).order_by('-date_given')
+    teacher_assignments = Assignment.objects.filter(recorded_by=request.user).annotate(
+        submission_count=Count('submissions')
+    ).order_by('-date_given')
+    
     context = {
         'page_title': 'My Assignments',
         'assignments': teacher_assignments,
     }
     return render(request, 'teacher/assignment_list.html', context)
+
 
 
 @login_required
@@ -175,92 +179,275 @@ def create_assignment(request):
             assignment.recorded_by = request.user
             assignment.save()
             messages.success(request, f"Assignment '{assignment.title}' created successfully!")
-            return redirect('assignment_list')
+
+            if assignment.assignment_type == 'mcq':
+                return redirect('create_mcq_questions', assignment_id=assignment.id)
+            else:
+                return redirect('assignment_list')
     else:
         form = AssignmentForm(teacher=teacher_profile)
 
-    context = {
+    return render(request, 'teacher/create_assignment.html', {
         'page_title': 'Create New Assignment',
         'form': form,
+    })
+
+
+@login_required
+@user_passes_test(is_teacher)
+def update_assignment(request, assignment_id):
+    assignment = get_object_or_404(Assignment, id=assignment_id, recorded_by=request.user)
+    teacher_profile = get_object_or_404(Teacher, user=request.user)
+
+    if request.method == 'POST':
+        form = AssignmentForm(request.POST, instance=assignment, teacher=teacher_profile)
+        if form.is_valid():
+            assignment = form.save()
+            messages.success(request, f"Assignment '{assignment.title}' updated successfully!")
+            return redirect('assignment_list')
+        else:
+            messages.error(request, "There was an error updating the assignment. Please correct the form.")
+    else:
+        form = AssignmentForm(instance=assignment, teacher=teacher_profile)
+
+    context = {
+        'page_title': f'Update Assignment: {assignment.title}',
+        'assignment': assignment,
+        'form': form,
     }
-    return render(request, 'teacher/create_assignment.html', context)
+    return render(request, 'teacher/update_assignment.html', context)
+
+
+@login_required
+@user_passes_test(is_teacher)
+@require_POST
+def delete_assignment(request, assignment_id):
+    assignment = get_object_or_404(Assignment, id=assignment_id, recorded_by=request.user)
+    assignment_title = assignment.title
+    try:
+        assignment.delete()
+        messages.success(request, f"Assignment '{assignment_title}' deleted successfully!")
+    except Exception as e:
+        messages.error(request, f"Error deleting assignment '{assignment_title}': {e}")
+    return redirect('assignment_list')
+
+
+@login_required
+@user_passes_test(is_teacher)
+def assignment_submissions(request, assignment_id):
+    assignment = get_object_or_404(Assignment, id=assignment_id, recorded_by=request.user)
+    submissions = Submission.objects.filter(assignment=assignment).order_by('-submitted_at')
+
+    context = {
+        'page_title': f'Submissions for: {assignment.title}',
+        'assignment': assignment,
+        'submissions': submissions,
+    }
+    return render(request, 'teacher/assignment_submissions.html', context)
+
+
+@login_required
+@user_passes_test(is_teacher)
+def submission_detail(request, submission_id):
+    submission = get_object_or_404(Submission, id=submission_id)
+    # Ensure the teacher viewing this submission is authorized (e.g., created the assignment)
+    if submission.assignment.recorded_by != request.user:
+        messages.error(request, "You are not authorized to view this submission.")
+        return redirect('assignment_list')
+
+    student_answers = None
+    total_score_achieved = None
+
+    if submission.assignment.assignment_type == 'mcq':
+        student_answers = StudentAnswer.objects.filter(submission=submission).select_related('question', 'chosen_choice').order_by('question__id')
+        # Calculate total score achieved for this MCQ submission
+        total_score_achieved = sum(sa.points_awarded for sa in student_answers)
+
+    context = {
+        'page_title': f'Submission Detail for {submission.student.get_full_name()}',
+        'submission': submission,
+        'student_answers': student_answers, # Will be None if not an MCQ
+        'total_score_achieved': total_score_achieved, # Will be None if not an MCQ
+    }
+    return render(request, 'teacher/submission_detail.html', context)
+
+
+@login_required
+@user_passes_test(is_teacher)
+def create_mcq_questions(request, assignment_id):
+    assignment = get_object_or_404(
+        Assignment,
+        id=assignment_id,
+        recorded_by=request.user,
+        assignment_type='mcq'
+    )
+
+    questions = list(
+        Question.objects.filter(assignment=assignment)
+        .prefetch_related('choices')
+        .order_by('id')
+    )
+
+    QuestionFormSet = formset_factory(QuestionForm, extra=1, can_delete=True)
+
+    if request.method == 'POST':
+        question_formset = QuestionFormSet(request.POST, prefix='questions')
+
+        # Attach all ChoiceFormSets BEFORE calling .is_valid()
+        for form_index, question_form in enumerate(question_formset.forms):
+            choice_prefix = f'choices-{form_index}'
+            question_form.choice_formset = ChoiceFormSet(request.POST, prefix=choice_prefix)
+
+        # Now validate
+        if question_formset.is_valid() and all(qf.choice_formset.is_valid() for qf in question_formset):
+            try:
+                with transaction.atomic():
+                    total_score = 0.0
+
+                    for form_index, question_form in enumerate(question_formset):
+                        if question_form.cleaned_data.get('DELETE', False):
+                            if form_index < len(questions):
+                                questions[form_index].delete()
+                            continue
+
+                        question = question_form.save(commit=False)
+                        question.assignment = assignment
+                        question.save()
+
+                        correct_choices = 0
+                        for choice_form in question_form.choice_formset:
+                            if choice_form.cleaned_data and not choice_form.cleaned_data.get('DELETE', False):
+                                choice = choice_form.save(commit=False)
+                                choice.question = question
+                                choice.save()
+                                if choice.is_correct:
+                                    correct_choices += 1
+
+                        if correct_choices != 1:
+                            raise ValidationError("You must select exactly one correct answer.")
+
+                        total_score += float(question.points)
+
+                    assignment.max_score = total_score
+                    assignment.save()
+
+                    messages.success(request, f"Questions for '{assignment.title}' saved successfully!")
+                    return redirect('create_mcq_questions', assignment_id=assignment.id)
+
+            except Exception as e:
+                traceback.print_exc()
+                messages.error(request, f"An error occurred: {e}")
+        else:
+            messages.error(request, "Please correct the errors in the forms.")
+
+    else:
+        new_form_index = request.GET.get('new_form_index')
+        if new_form_index is not None:
+            # AJAX request for dynamic form addition
+            new_form_index = int(new_form_index)
+            question_form = QuestionForm(prefix=f'questions-{new_form_index}')
+            question_form.choice_formset = ChoiceFormSet(prefix=f'choices-{new_form_index}', queryset=Choice.objects.none())
+
+            return render(request, 'teacher/includes/single_question_form.html', {
+                'question_form': question_form,
+                'form_index': new_form_index,
+            })
+
+        # GET request: show all existing questions
+        initial_data = [{'question_text': q.question_text, 'points': q.points} for q in questions]
+        question_formset = QuestionFormSet(initial=initial_data, prefix='questions')
+
+        for form_index, question_form in enumerate(question_formset.forms):
+            if form_index < len(questions):
+                question_form.instance = questions[form_index]
+                question_form.choice_formset = ChoiceFormSet(
+                    queryset=questions[form_index].choices.all(),
+                    prefix=f'choices-{form_index}'
+                )
+            else:
+                question_form.choice_formset = ChoiceFormSet(
+                    queryset=Choice.objects.none(),
+                    prefix=f'choices-{form_index}'
+                )
+
+    context = {
+        'assignment': assignment,
+        'question_formset': question_formset,
+    }
+
+    return render(request, 'teacher/create_mcq_questions.html', context)
 
 
 @login_required
 @user_passes_test(is_teacher)
 def input_scores(request, assignment_id):
     assignment = get_object_or_404(Assignment, id=assignment_id, recorded_by=request.user)
-
     students_in_class = Student.objects.filter(current_class=assignment._class).order_by('last_name', 'first_name')
+    existing_scores = {s.student_id: s for s in Score.objects.filter(assignment=assignment)}
+    existing_submissions = {s.student_id: s for s in Submission.objects.filter(assignment=assignment)}
 
-    initial_scores_data = []
-    existing_scores = {score.student_id: score for score in Score.objects.filter(assignment=assignment)}
-    existing_submissions = {sub.student_id: sub for sub in Submission.objects.filter(assignment=assignment)} # NEW: Fetch submissions
+    initial_data = [
+        {
+            'id': existing_scores.get(s.id).id if s.id in existing_scores else '',
+            'student': s.id,
+            'score_achieved': existing_scores.get(s.id).score_achieved if s.id in existing_scores else None
+        }
+        for s in students_in_class
+    ]
 
-    for student in students_in_class:
-        initial_scores_data.append({
-            'id': existing_scores[student.id].id if student.id in existing_scores else '',
-            'student': student.id,
-            'score_achieved': existing_scores[student.id].score_achieved if student.id in existing_scores else None,
-        })
-
-    ScoreFormSet = formset_factory(
-        ScoreForm,
-        extra=len(students_in_class),
-        can_delete=False
-    )
+    ScoreFormSet = formset_factory(ScoreForm, extra=len(students_in_class), can_delete=False)
 
     if request.method == 'POST':
-        formset = ScoreFormSet(request.POST, initial=initial_scores_data, prefix='scores')
+        formset = ScoreFormSet(request.POST, initial=initial_data, prefix='scores')
+
+        if assignment.assignment_type == 'mcq':
+            messages.error(request, "Scores for MCQ assignments are automatically calculated and cannot be manually edited here.")
+            return redirect('input_scores', assignment_id=assignment.id)
+
         if formset.is_valid():
             with transaction.atomic():
                 for form in formset:
-                    score_achieved = form.cleaned_data.get('score_achieved')
+                    score = form.cleaned_data.get('score_achieved')
                     student_id = form.cleaned_data.get('student')
                     score_id = form.cleaned_data.get('id')
+                    student = get_object_or_404(Student, pk=student_id)
 
-                    student_obj = get_object_or_404(Student, pk=student_id)
-
-                    if score_achieved is not None and score_achieved != '':
+                    if score is not None and score != '':
                         if score_id:
-                            score_obj = Score.objects.get(id=score_id)
-                            score_obj.score_achieved = score_achieved
-                            score_obj.recorded_by = request.user
-                            score_obj.save()
+                            s = Score.objects.get(id=score_id)
+                            s.score_achieved = score
+                            s.recorded_by = request.user
+                            s.save()
                         else:
                             Score.objects.create(
                                 assignment=assignment,
-                                student=student_obj,
-                                score_achieved=score_achieved,
+                                student=student,
+                                score_achieved=score,
                                 recorded_by=request.user
                             )
             messages.success(request, f"Scores for '{assignment.title}' updated successfully!")
             return redirect('input_scores', assignment_id=assignment.id)
         else:
             messages.error(request, "Please correct the errors in the score input.")
+    else:
+        formset = ScoreFormSet(initial=initial_data, prefix='scores')
 
-    else: # GET request
-        formset = ScoreFormSet(initial=initial_scores_data, prefix='scores')
-
-    # NEW: Attach submission to each form for display
     for form in formset:
         student_id = form.initial.get('student')
         if student_id:
             student = get_object_or_404(Student, pk=student_id)
             form.fields['student_name'].initial = f"{student.first_name} {student.last_name}"
-            form.submission = existing_submissions.get(student_id) # Attach submission object
-        else:
-            form.fields['student_name'].initial = "N/A (No student ID)"
-            form.submission = None
+            form.submission = existing_submissions.get(student_id)
+            if assignment.assignment_type == 'mcq':
+                form.fields['score_achieved'].widget.attrs['readonly'] = True
+                form.fields['score_achieved'].widget.attrs['class'] += ' bg-gray-100 cursor-not-allowed'
 
-
-    context = {
+    return render(request, 'teacher/input_scores.html', {
         'page_title': f'Input Scores for {assignment.title}',
         'assignment': assignment,
         'formset': formset,
-        'students_in_class': students_in_class, # This might be redundant if formset handles all students
-    }
-    return render(request, 'teacher/input_scores.html', context)
+        'students_in_class': students_in_class,
+    })
 
 
 @login_required
@@ -268,56 +455,52 @@ def input_scores(request, assignment_id):
 @require_POST
 def save_scores_ajax(request, assignment_id):
     assignment = get_object_or_404(Assignment, id=assignment_id, recorded_by=request.user)
-    students_in_class = Student.objects.filter(current_class=assignment._class).order_by('last_name', 'first_name')
-    initial_scores_data = []
-    existing_scores = {score.student_id: score for score in Score.objects.filter(assignment=assignment)}
+    
+    if assignment.assignment_type == 'mcq':
+        return JsonResponse({'status': 'error', 'message': 'MCQ assignment scores are graded automatically and cannot be manually edited.'}, status=400)
 
-    for student in students_in_class:
-        initial_scores_data.append({
-            'id': existing_scores[student.id].id if student.id in existing_scores else '',
-            'student': student.id,
-            'score_achieved': existing_scores[student.id].score_achieved if student.id in existing_scores else None,
-        })
+    try:
+        data = json.loads(request.body)
+        student_id = data.get('student_id')
+        score_achieved = data.get('score_achieved')
+        
+        if student_id is None or score_achieved is None:
+            return JsonResponse({'status': 'error', 'message': 'Missing student_id or score_achieved.'}, status=400)
 
-    ScoreFormSet = formset_factory(
-        ScoreForm,
-        extra=len(students_in_class),
-        can_delete=False
-    )
-
-    formset = ScoreFormSet(request.POST, initial=initial_scores_data, prefix='scores')
-
-    if formset.is_valid():
         try:
-            with transaction.atomic():
-                for form in formset:
-                    if form.cleaned_data:
-                        score_achieved = form.cleaned_data.get('score_achieved')
-                        student_id = form.cleaned_data.get('student')
-                        score_id = form.cleaned_data.get('id')
+            score_achieved = float(score_achieved)
+        except ValueError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid score format. Must be a number.'}, status=400)
 
-                        student_obj = get_object_or_404(Student, pk=student_id)
+        student_obj = get_object_or_404(Student, pk=student_id)
 
-                        if score_achieved is not None and score_achieved != '':
-                            if score_id:
-                                score_obj = Score.objects.get(id=score_id)
-                                score_obj.score_achieved = score_achieved
-                                score_obj.recorded_by = request.user
-                                score_obj.save()
-                            else:
-                                Score.objects.create(
-                                    assignment=assignment,
-                                    student=student_obj,
-                                    score_achieved=score_achieved,
-                                    recorded_by=request.user
-                                )
-            return JsonResponse({'status': 'success', 'message': 'Scores saved successfully!'})
-        except Exception as e:
-            traceback.print_exc()
-            return JsonResponse({'status': 'error', 'message': f'Database error: {str(e)}'}, status=500)
-    else:
-        errors = {form.prefix: form.errors for form in formset if form.errors}
-        return JsonResponse({'status': 'error', 'message': 'Validation failed', 'errors': errors}, status=400)
+        existing_submission = Submission.objects.filter(assignment=assignment, student=student_obj).first()
+        if existing_submission and existing_submission.is_graded:
+            return JsonResponse({'status': 'error', 'message': f"Submission for {student_obj.get_full_name()} is already graded and cannot be changed."}, status=400)
+
+        if score_achieved < 0:
+            return JsonResponse({'status': 'error', 'message': "Score cannot be negative."}, status=400)
+        if score_achieved > float(assignment.max_score):
+            return JsonResponse({'status': 'error', 'message': f"Score cannot exceed the assignment's maximum score of {assignment.max_score}."}, status=400)
+
+        Score.objects.update_or_create(
+            assignment=assignment,
+            student=student_obj,
+            defaults={
+                'score_achieved': score_achieved,
+                'recorded_by': request.user
+            }
+        )
+        if existing_submission:
+            existing_submission.is_graded = True
+            existing_submission.save()
+
+        return JsonResponse({'status': 'success', 'message': 'Score saved successfully!'})
+    except json.JSONDecodeError:
+        return JsonResponse({'status': 'error', 'message': 'Invalid JSON format in request body.'}, status=400)
+    except Exception as e:
+        traceback.print_exc()
+        return JsonResponse({'status': 'error', 'message': f"An unexpected error occurred: {str(e)}"}, status=500)
 
 
 # --- Teacher Attendance Management Views ---
@@ -683,7 +866,6 @@ def student_dashboard(request):
     return render(request, 'student/dashboard.html', context)
 
 
-# --- NEW: Submit Assignment View for Students ---
 @login_required
 @user_passes_test(is_student)
 def submit_assignment(request, assignment_id):
@@ -695,30 +877,178 @@ def submit_assignment(request, assignment_id):
         messages.error(request, "This assignment is not for your class.")
         return redirect('student_dashboard')
 
-    # Check if a submission already exists
+    # Check if a submission already exists for this assignment and student
     existing_submission = Submission.objects.filter(assignment=assignment, student=student_profile).first()
 
-    if request.method == 'POST':
-        form = SubmissionForm(request.POST, instance=existing_submission)
-        if form.is_valid():
-            submission = form.save(commit=False)
-            submission.assignment = assignment
-            submission.student = student_profile
-            submission.save()
-            messages.success(request, f"Your submission for '{assignment.title}' has been saved!")
-            return redirect('student_dashboard')
-        else:
-            messages.error(request, "There was an error with your submission. Please correct it.")
-    else:
-        form = SubmissionForm(instance=existing_submission)
+    # Determine if the submission is graded
+    is_graded = existing_submission and existing_submission.is_graded
 
-    context = {
-        'page_title': f'Submit: {assignment.title}',
-        'assignment': assignment,
-        'form': form,
-        'existing_submission': existing_submission,
-    }
-    return render(request, 'student/submit_assignment.html', context)
+    if assignment.assignment_type == 'text_file':
+        if request.method == 'POST':
+            if is_graded:
+                messages.error(request, "This assignment has already been graded and cannot be re-submitted.")
+                return redirect('submit_assignment', assignment_id=assignment.id)
+
+            form = SubmissionForm(request.POST, request.FILES, instance=existing_submission)
+            if form.is_valid():
+                submission = form.save(commit=False)
+                submission.assignment = assignment
+                submission.student = student_profile
+                submission.is_graded = False # Manual grading for text/file submissions
+                submission.save()
+                messages.success(request, f"Your submission for '{assignment.title}' has been saved!")
+                return redirect('student_dashboard')
+            else:
+                messages.error(request, "There was an error with your submission. Please correct it.")
+        else:
+            form = SubmissionForm(instance=existing_submission)
+            # If graded, make form fields read-only on GET request
+            if is_graded:
+                for field_name, field in form.fields.items():
+                    field.widget.attrs['readonly'] = 'readonly'
+                    field.widget.attrs['disabled'] = 'disabled' # Disable for file input
+                    if 'class' in field.widget.attrs:
+                        field.widget.attrs['class'] += ' bg-gray-100 cursor-not-allowed'
+                    else:
+                        field.widget.attrs['class'] = 'bg-gray-100 cursor-not-allowed'
+
+
+        context = {
+            'page_title': f'Submit: {assignment.title}',
+            'assignment': assignment,
+            'form': form,
+            'existing_submission': existing_submission,
+            'assignment_type': 'text_file',
+            'is_graded_for_text_file': is_graded, # Pass graded status to template
+        }
+        return render(request, 'student/submit_assignment.html', context)
+
+    elif assignment.assignment_type == 'mcq':
+        questions = Question.objects.filter(assignment=assignment).prefetch_related('choices').order_by('id')
+
+        # If no questions are set up for this MCQ, inform the student
+        if not questions.exists():
+            messages.info(request, "This MCQ assignment has no questions set up yet. Please check back later.")
+            return redirect('student_dashboard')
+
+        # If a submission already exists, fetch the student's previous answers
+        initial_student_answers = []
+        if existing_submission:
+            student_answers_map = {sa.question_id: sa for sa in StudentAnswer.objects.filter(submission=existing_submission)}
+            for question in questions:
+                # Pre-populate with existing answer if available
+                initial_student_answers.append({
+                    'question': question.id,
+                    'chosen_choice': student_answers_map.get(question.id, {}).chosen_choice.id if question.id in student_answers_map and student_answers_map[question.id].chosen_choice else None,
+                    'id': student_answers_map.get(question.id, {}).id if question.id in student_answers_map else None,
+                })
+
+        StudentAnswerFormSet_instance = formset_factory(
+            StudentAnswerForm,
+            formset=BaseStudentAnswerFormSet, # Use BaseStudentAnswerFormSet
+            extra=0,
+            max_num=len(questions),
+            validate_max=True
+        )
+
+        if request.method == 'POST':
+            if is_graded:
+                messages.error(request, "This assignment has already been graded and cannot be re-submitted.")
+                return redirect('submit_assignment', assignment_id=assignment.id)
+
+            # Pass request.POST and existing submission for proper formset handling
+            formset = StudentAnswerFormSet_instance(
+                request.POST,
+                questions=questions,
+                student_submission=existing_submission,
+                prefix='mcq_answers'
+            )
+
+            if formset.is_valid():
+                with transaction.atomic():
+                    # Create or update the main Submission object
+                    if not existing_submission:
+                        submission = Submission.objects.create(
+                            assignment=assignment,
+                            student=student_profile,
+                            submission_text="MCQ Submission", # Placeholder text
+                            is_graded=True # Will be graded automatically
+                        )
+                    else:
+                        submission = existing_submission
+                        submission.is_graded = True # Mark as graded after re-submission
+                        submission.save()
+
+                    total_score_achieved = 0.0
+                    for form in formset:
+                        question_id = form.cleaned_data['question']
+                        chosen_choice = form.cleaned_data.get('chosen_choice') # Can be None if not answered
+
+                        question_obj = get_object_or_404(Question, pk=question_id)
+                        is_correct = False
+                        points_awarded = 0.0
+
+                        if chosen_choice and chosen_choice.is_correct:
+                            is_correct = True
+                            points_awarded = question_obj.points
+                        total_score_achieved += points_awarded
+
+                        # Create or update StudentAnswer
+                        if form.instance.pk: # Existing answer
+                            student_answer = form.instance
+                            student_answer.chosen_choice = chosen_choice
+                            student_answer.is_correct = is_correct
+                            student_answer.points_awarded = points_awarded
+                            student_answer.save()
+                        else: # New answer
+                            StudentAnswer.objects.create(
+                                submission=submission,
+                                question=question_obj,
+                                chosen_choice=chosen_choice,
+                                is_correct=is_correct,
+                                points_awarded=points_awarded
+                            )
+
+                    # Update the student's overall score for this assignment
+                    # Find or create the Score object
+                    score_obj, created = Score.objects.update_or_create(
+                        assignment=assignment,
+                        student=student_profile,
+                        defaults={
+                            'score_achieved': total_score_achieved,
+                            'recorded_by': request.user # Teacher user will be the grader (or an admin user)
+                        }
+                    )
+                    messages.success(request, f"Your MCQ submission for '{assignment.title}' has been graded!")
+                    return redirect('student_dashboard')
+            else:
+                messages.error(request, "There was an error with your submission. Please correct it.")
+        else: # GET request
+            formset = StudentAnswerFormSet_instance(
+                questions=questions,
+                student_submission=existing_submission,
+                prefix='mcq_answers',
+                initial=initial_student_answers # Pass initial data for pre-filling
+            )
+            if is_graded:
+                for form in formset:
+                    form.fields['chosen_choice'].widget.attrs['disabled'] = 'disabled'
+                    form.fields['chosen_choice'].widget.attrs['class'] += ' cursor-not-allowed'
+
+
+        context = {
+            'page_title': f'Attempt MCQ: {assignment.title}',
+            'assignment': assignment,
+            'formset': formset,
+            'questions': questions, # Pass questions directly for template display
+            'existing_submission': existing_submission,
+            'assignment_type': 'mcq',
+            'is_graded_for_mcq': is_graded, # Pass graded status to template
+        }
+        return render(request, 'student/submit_assignment.html', context) # Still use submit_assignment.html, but it will include mcq_submission_form.html
+    else:
+        messages.error(request, "Invalid assignment type.")
+        return redirect('student_dashboard')
 
 
 @login_required
@@ -789,3 +1119,5 @@ def delete_student(request, pk):
     except Exception as e:
         messages.error(request, f"Error deleting student '{student_name}': {e}")
     return redirect('student_list')
+
+

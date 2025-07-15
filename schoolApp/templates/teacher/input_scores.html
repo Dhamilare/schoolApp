@@ -1,157 +1,178 @@
+{# core_app/templates/core_app/teacher/input_scores.html #}
 {% extends 'base.html' %}
-{% load crispy_forms_tags %}
 {% load static %}
+{% load mathfilters %} {# Ensure mathfilters is loaded if used elsewhere, though not directly used in this snippet #}
 
 {% block title %}Input Scores for {{ assignment.title }}{% endblock %}
 
 {% block content %}
-<div class="container mx-auto p-4 md:p-6 lg:p-8">
-    <h1 class="text-4xl font-extrabold text-dark mb-6 text-center">
-        <i class="fas fa-pencil-alt mr-3 text-primary"></i>Input Scores for <span class="text-secondary">{{ assignment.title }}</span>
-    </h1>
-    <p class="text-lg text-gray-600 text-center mb-8">
-        Subject: <span class="font-semibold">{{ assignment.subject.name }}</span> |
-        Class: <span class="font-semibold">{{ assignment.class_obj.name }}</span> |
-        Term: <span class="font-semibold">{{ assignment.term.name }}</span> |
-        Max Score: <span class="font-semibold">{{ assignment.max_score }}</span>
-    </p>
+<div class="container mx-auto p-4 md:p-6 lg:p-8 font-inter">
+    {# Page Header with Assignment Details and Back Button #}
+    <div class="flex flex-col sm:flex-row justify-between items-center mb-8 bg-white p-6 rounded-xl shadow-md border border-gray-200">
+        <h1 class="text-4xl font-extrabold text-gray-800 flex items-center mb-4 sm:mb-0">
+            <i class="fas fa-marker mr-4 text-indigo-500"></i>Input Scores for: <span class="text-purple-500">{{ assignment.title }}</span>
+        </h1>
+        <a href="{% url 'assignment_list' %}" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center group">
+            <i class="fas fa-arrow-left mr-3 group-hover:rotate-6"></i>Back to Assignments
+        </a>
+    </div>
 
-    <div class="bg-white p-8 rounded-lg shadow-xl w-full border border-gray-200">
-        <form id="scoreInputForm" method="post" action="{% url 'save_scores_ajax' assignment.id %}" class="space-y-6">
-            {% csrf_token %}
-            {{ formset.management_form }}
+    <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200 text-blue-800">
+        <h2 class="text-2xl font-semibold mb-3">Assignment Details</h2>
+        <p class="mb-2"><strong class="text-gray-700">Subject:</strong> {{ assignment.subject.name }}</p>
+        <p class="mb-2"><strong class="text-gray-700">Class:</strong> {{ assignment.class_name_display }}</p>
+        <p class="mb-2"><strong class="text-gray-700">Due Date:</strong> {{ assignment.due_date|date:"F d, Y" }}</p>
+        <p class="mb-2"><strong class="text-gray-700">Type:</strong> {{ assignment.get_assignment_type_display }}</p>
+        <p class="mb-2"><strong class="text-gray-700">Maximum Score:</strong> {{ assignment.max_score|floatformat:2 }}</p>
+    </div>
 
-            <div id="formset-container" class="overflow-x-auto">
+    {% if students_in_class %}
+        <div class="bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
+            <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
+                    <thead class="bg-gray-100">
                         <tr>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                                 Student Name
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Score Achieved
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Current Score
                             </th>
-                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Max Score
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                New Score (Out of {{ assignment.max_score|floatformat:2 }})
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Submission
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Actions
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                                Status
                             </th>
                         </tr>
                     </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
+                    <tbody class="bg-white divide-y divide-gray-100">
+                        {# Loop through the formset, which contains forms for each student #}
                         {% for form in formset %}
-                            <tr class="hover:bg-gray-50">
+                            <tr class="hover:bg-blue-50 transition-colors duration-200 ease-in-out" data-student-id="{{ form.initial.student }}">
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                    {# Display student name directly, keep hidden input for ID #}
-                                    <div class="font-semibold text-gray-800">{{ form.fields.student_name.initial }}</div>
+                                    {{ form.fields.student_name.initial }}
                                     {{ form.student }} {# Hidden student ID field #}
-                                    {{ form.id }} {# Hidden ID for existing scores #}
+                                    {{ form.id }} {# Hidden Score ID field #}
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                    {{ form.score_achieved.as_widget }}
-                                    {% if form.score_achieved.errors %}
-                                        <div class="text-red-500 text-xs mt-1">
-                                            {% for error in form.score_achieved.errors %}
-                                                {{ error }}
-                                            {% endfor %}
-                                        </div>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {% if form.initial.score_achieved is not None %}
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                            {{ form.initial.score_achieved|floatformat:2 }}
+                                        </span>
+                                    {% else %}
+                                        <span class="text-gray-500 italic">N/A</span>
                                     {% endif %}
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ assignment.max_score }}
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {{ form.score_achieved }} {# This is the actual input field #}
+                                    {% for error in form.score_achieved.errors %}
+                                        <p class="text-red-600 text-xs mt-1">{{ error }}</p>
+                                    {% endfor %}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-center text-sm">
+                                    {% if form.submission %}
+                                        <a href="{% url 'submission_detail' form.submission.id %}" class="text-blue-600 hover:text-blue-900 transition duration-300 transform hover:scale-110 inline-flex items-center group">
+                                            <i class="fas fa-file-alt mr-2 group-hover:animate-pulse"></i>View Submission
+                                        </a>
+                                    {% else %}
+                                        <span class="text-gray-500 italic">No Submission</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                                    {% if assignment.assignment_type == 'mcq' %}
+                                        <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-200 text-gray-800 cursor-not-allowed">
+                                            <i class="fas fa-calculator mr-1"></i>Auto-Graded
+                                        </span>
+                                    {% else %}
+                                        <button type="button" class="save-score-btn bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full shadow-md transition duration-300 transform hover:scale-105 flex items-center text-sm mx-auto">
+                                            <i class="fas fa-save mr-2"></i>Save
+                                        </button>
+                                    {% endif %}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                    <div class="score-status-message" id="status-{{ form.initial.student }}"></div>
                                 </td>
                             </tr>
                         {% endfor %}
                     </tbody>
                 </table>
-                {% if not formset %} {# Message if formset is empty #}
-                    <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 rounded-lg shadow-md mt-4" role="alert">
-                        <p class="font-bold">No students found in this class!</p>
-                        <p>Please ensure students are assigned to this class in the admin panel.</p>
-                    </div>
-                {% endif %}
             </div>
-
-            <div class="flex justify-end space-x-4 mt-8">
-                <a href="{% url 'assignment_list' %}" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-md shadow-lg transition duration-300 transform hover:scale-105 flex items-center">
-                    <i class="fas fa-arrow-left mr-2"></i>Back to Assignments
-                </a>
-                <button type="submit" id="saveScoresBtn" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-300 transform hover:scale-105 flex items-center">
-                    <i class="fas fa-save mr-2"></i>Save Scores
-                </button>
-            </div>
-        </form>
-    </div>
-
-    {# Success/Error Message Box (Custom modal for AJAX feedback) #}
-    <div id="messageBox" class="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center hidden">
-        <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full mx-auto text-center border">
-            <h3 id="messageTitle" class="text-xl font-bold mb-3"></h3>
-            <p id="messageText" class="mb-4"></p>
-            <button id="closeMessageBox" class="bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition duration-300">
-                OK
-            </button>
         </div>
-    </div>
+    {% else %}
+        <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-6 rounded-lg shadow-md text-center animate-fade-in" role="alert">
+            <p class="font-bold text-xl mb-2"><i class="fas fa-info-circle mr-2"></i>No students found!</p>
+            <p class="text-lg">There are no students assigned to this class yet.</p>
+        </div>
+    {% endif %}
 </div>
+
 {% endblock %}
 
 {% block extra_js %}
-<script src="{% static 'js/main.js' %}"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const form = document.getElementById('scoreInputForm');
-        const messageBox = document.getElementById('messageBox');
-        const messageTitle = document.getElementById('messageTitle');
-        const messageText = document.getElementById('messageText');
-        const closeMessageBox = document.getElementById('closeMessageBox');
+        const saveButtons = document.querySelectorAll('.save-score-btn');
+        const assignmentId = "{{ assignment.id }}"; // Get assignment ID from Django context
 
-        form.addEventListener('submit', function(e) {
-            e.preventDefault();
+        saveButtons.forEach(button => {
+            button.addEventListener('click', async function() {
+                const row = this.closest('tr');
+                const studentId = row.dataset.studentId;
+                const scoreInput = row.querySelector('input[name$="-score_achieved"]');
+                const scoreAchieved = scoreInput.value;
+                const statusMessageDiv = row.querySelector('.score-status-message');
 
-            const formData = new FormData(form);
-            const url = form.action;
+                statusMessageDiv.innerHTML = '<i class="fas fa-spinner fa-spin text-blue-500 mr-2"></i>Saving...';
+                statusMessageDiv.className = 'score-status-message text-blue-500';
 
-            fetch(url, {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    messageTitle.textContent = 'Success!';
-                    messageText.textContent = data.message;
-                    messageBox.classList.remove('hidden');
-                } else {
-                    messageTitle.textContent = 'Error!';
-                    messageText.textContent = data.message;
-                    if (data.errors) {
-                        let errorHtml = '<ul class="list-disc list-inside text-left">';
-                        for (const prefix in data.errors) {
-                            for (const field in data.errors[prefix]) {
-                                errorHtml += `<li>${prefix} - ${field}: ${data.errors[prefix][field].join(', ')}</li>`;
-                            }
+                try {
+                    const response = await fetch(`/assignments/${assignmentId}/scores/save_ajax/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': '{{ csrf_token }}' // Include CSRF token
+                        },
+                        body: JSON.stringify({
+                            student_id: studentId,
+                            score_achieved: parseFloat(scoreAchieved) // Convert to number
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        statusMessageDiv.innerHTML = '<i class="fas fa-check-circle text-green-500 mr-2"></i>' + data.message;
+                        statusMessageDiv.className = 'score-status-message text-green-500';
+                        // Update the "Current Score" column immediately
+                        const currentScoreSpan = row.querySelector('td:nth-child(2) span');
+                        if (currentScoreSpan) {
+                            currentScoreSpan.textContent = parseFloat(scoreAchieved).toFixed(2);
+                            currentScoreSpan.classList.remove('bg-gray-100', 'text-gray-800'); // Remove old styling if any
+                            currentScoreSpan.classList.add('bg-blue-100', 'text-blue-800'); // Apply new styling
                         }
-                        errorHtml += '</ul>';
-                        messageText.innerHTML += errorHtml;
+                    } else {
+                        statusMessageDiv.innerHTML = '<i class="fas fa-times-circle text-red-500 mr-2"></i>' + (data.message || 'Error saving score.');
+                        statusMessageDiv.className = 'score-status-message text-red-500';
                     }
-                    messageBox.classList.remove('hidden');
+                } catch (error) {
+                    console.error('Fetch error:', error);
+                    statusMessageDiv.innerHTML = '<i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>Network error or invalid response.';
+                    statusMessageDiv.className = 'score-status-message text-red-500';
+                } finally {
+                    // Clear message after a few seconds
+                    setTimeout(() => {
+                        statusMessageDiv.innerHTML = '';
+                        statusMessageDiv.className = 'score-status-message';
+                    }, 5000);
                 }
-            })
-            .catch(error => {
-                console.error('Fetch error:', error);
-                messageTitle.textContent = 'Network Error';
-                messageText.textContent = 'Could not connect to the server. Please try again.';
-                messageBox.classList.remove('hidden');
             });
-        });
-
-        closeMessageBox.addEventListener('click', function() {
-            messageBox.classList.add('hidden');
-            if (messageTitle.textContent === 'Success!') {
-                window.location.reload();
-            }
         });
     });
 </script>

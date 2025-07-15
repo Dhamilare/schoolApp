@@ -1,46 +1,28 @@
 {# core_app/templates/core_app/teacher/create_assignment.html #}
-{% extends 'base.html' %} {# Ensure it extends core_app/base.html #}
+{% extends 'base.html' %}
 {% load crispy_forms_tags %}
-{% load static %}
 
-{% block title %}Create Assignment{% endblock %}
+{% block title %}Create New Assignment{% endblock %}
 
 {% block content %}
-<div class="flex items-center justify-center min-h-[calc(100vh-160px)] px-4 py-8"> {# Added py-8 for vertical padding #}
-    <div class="bg-white p-8 md:p-10 rounded-xl shadow-2xl w-full max-w-2xl border border-gray-200 transform animate-fade-in-down"> {# Enhanced shadows and added animation #}
-        <h2 class="text-4xl font-extrabold text-center bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent mb-8"> {# Gradient title #}
-            <i class="fas fa-plus-circle mr-3"></i>Create New Assignment
-        </h2>
+<div class="container mx-auto p-4 md:p-6 lg:p-8">
+    <h1 class="text-4xl font-extrabold text-center bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent mb-8 animate-fade-in-down">
+        <i class="fas fa-plus-circle mr-3 text-primary"></i>Create New Assignment
+    </h1>
 
-        {% if form.errors %}
-            <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg shadow-md mb-6 animate-fade-in" role="alert"> {# Enhanced error styling #}
-                <p class="font-bold text-lg mb-2"><i class="fas fa-exclamation-triangle mr-2"></i>Please correct the following errors:</p>
-                <ul class="mt-2 list-disc list-inside text-sm">
-                    {% for field, errors in form.errors.items %}
-                        {% for error in errors %}
-                            <li><span class="font-semibold">{{ field|title }}:</span> {{ error }}</li>
-                        {% endfor %}
-                    {% endfor %}
-                </ul>
-            </div>
-        {% endif %}
-
+    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-2xl mx-auto border border-gray-200 animate-fade-in">
         <form method="post" class="space-y-6">
             {% csrf_token %}
-            {{ form|crispy }} {# Render the form using crispy forms #}
-            <div class="flex justify-end space-x-4 mt-8"> {# Increased top margin #}
-                <a href="{% url 'assignment_list' %}" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center group"> {# Rounded buttons, larger padding #}
-                    <i class="fas fa-times-circle mr-3 group-hover:rotate-6"></i>Cancel
+            {{ form|crispy }}
+            <div class="flex justify-end space-x-4 mt-8">
+                <a href="{% url 'assignment_list' %}" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center group">
+                    <i class="fas fa-arrow-left mr-3 group-hover:rotate-6"></i>Cancel
                 </a>
-                <button type="submit" class="bg-gradient-to-r from-primary to-secondary hover:from-indigo-700 hover:to-indigo-800 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center group"> {# Gradient button, larger padding #}
+                <button type="submit" class="bg-gradient-to-r from-primary to-secondary hover:from-indigo-700 hover:to-indigo-800 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center group">
                     <i class="fas fa-save mr-3 group-hover:animate-pulse"></i>Save Assignment
                 </button>
             </div>
         </form>
     </div>
 </div>
-{% endblock %}
-
-{% block extra_js %}
-{# No specific JS for this page needed beyond base.html and main.js #}
 {% endblock %}

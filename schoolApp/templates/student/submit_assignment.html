@@ -1,53 +1,113 @@
-{% extends 'base.html' %}
+{# core_app/templates/core_app/student/submit_assignment.html #}
+{% extends 'base.html' %} {# CORRECTED: Changed to core_app/base.html #}
 {% load crispy_forms_tags %}
 {% load static %}
+{% load custom_filters %} {# Assuming custom_filters is available for split_string and last_item #}
 
 {% block title %}Submit Assignment{% endblock %}
 
 {% block content %}
-<div class="container mx-auto p-4 md:p-6 lg:p-8">
-    <h1 class="text-4xl font-extrabold text-center bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent mb-4 animate-fade-in-down">
-        <i class="fas fa-upload mr-3 text-primary"></i>Submit Assignment: <span class="text-secondary">{{ assignment.title }}</span>
+<div class="container mx-auto p-4 md:p-6 lg:p-8 font-inter"> {# Added font-inter #}
+    <h1 class="text-4xl font-extrabold text-center bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600 mb-8 animate-fade-in-down"> {# Updated gradient #}
+        <i class="fas fa-paper-plane mr-3 text-indigo-500"></i>Submit Assignment: <span class="text-purple-500">{{ assignment.title }}</span>
     </h1>
-    <p class="text-xl text-gray-700 text-center font-semibold mb-8 animate-fade-in-up">
-        Due Date: <span class="text-primary">{{ assignment.due_date|date:"F d, Y" }}</span> | Max Score: <span class="text-primary">{{ assignment.max_score }}</span>
-    </p>
 
     <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-3xl mx-auto border border-gray-200 animate-fade-in">
-        <h3 class="text-2xl font-bold text-dark mb-4">Assignment Details:</h3>
-        <div class="bg-gray-50 p-4 rounded-md border border-gray-200 mb-6">
-            <p class="text-gray-700 font-medium mb-2">Subject: <span class="font-normal">{{ assignment.subject.name }}</span></p>
-            <p class="text-gray-700 font-medium mb-2">Class: <span class="font-normal">{{ assignment._class.name }}</span></p>
-            <p class="text-gray-700 font-medium mb-2">Term: <span class="font-normal">{{ assignment.term.name }}</span></p>
+        <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200 text-blue-800">
+            <h2 class="text-2xl font-semibold mb-3">Assignment Details</h2>
+            <p class="mb-2"><strong class="text-gray-700">Subject:</strong> {{ assignment.subject.name }}</p>
+            <p class="mb-2"><strong class="text-gray-700">Class:</strong> {{ assignment.class_name_display }}</p>
+            <p class="mb-2"><strong class="text-gray-700">Due Date:</strong> {{ assignment.due_date|date:"F d, Y" }}</p>
+            <p class="mb-2"><strong class="text-gray-700">Max Score:</strong> {{ assignment.max_score|floatformat:0 }}</p>
+            <p class="mb-2"><strong class="text-gray-700">Assignment Type:</strong> {{ assignment.get_assignment_type_display }}</p>
             {% if assignment.description %}
-            <div class="mt-4 p-3 bg-white rounded-md shadow-sm border border-gray-100">
-                <p class="font-semibold text-gray-800 mb-2">Description:</p>
-                <p class="text-gray-700 whitespace-pre-wrap">{{ assignment.description }}</p>
-            </div>
-            {% else %}
-            <p class="text-gray-500 italic mt-4">No description provided for this assignment.</p>
+                <p class="mt-4"><strong class="text-gray-700">Description:</strong></p>
+                <div class="prose max-w-none text-gray-700">
+                    {{ assignment.description|linebreaksbr }}
+                </div>
             {% endif %}
         </div>
 
-        {% if existing_submission %}
-        <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded-lg shadow-md mb-6" role="alert">
-            <p class="font-bold"><i class="fas fa-info-circle mr-2"></i>You have already submitted this assignment.</p>
-            <p>You can modify your previous submission below.</p>
-        </div>
-        {% endif %}
+        {% if assignment_type == 'text_file' %}
+            {% if existing_submission and existing_submission.is_graded %}
+                <div class="mt-8 p-6 bg-green-100 rounded-xl border border-green-300 text-green-800 shadow-inner">
+                    <h3 class="text-2xl font-semibold mb-3"><i class="fas fa-check-circle mr-2"></i>Submission Graded</h3>
+                    <p class="mb-2">This assignment has been graded. You can no longer edit your submission.</p>
+                    <p class="mb-2"><strong class="text-gray-700">Submitted On:</strong> {{ existing_submission.submission_date|date:"F d, Y H:i" }}</p>
+                    {% if existing_submission.submission_text %}
+                        <p class="mb-2"><strong class="text-gray-700">Your Text:</strong></p>
+                        <div class="prose max-w-none text-gray-700 border p-3 rounded-md bg-white">
+                            {{ existing_submission.submission_text|linebreaksbr }}
+                        </div>
+                    {% else %}
+                        <p class="mb-2 text-gray-600">No text content submitted.</p>
+                    {% endif %}
 
-        <form method="post" class="space-y-6">
-            {% csrf_token %}
-            {{ form|crispy }}
-            <div class="flex justify-end space-x-4 mt-8">
-                <a href="{% url 'student_dashboard' %}" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center group">
-                    <i class="fas fa-arrow-left mr-3 group-hover:rotate-6"></i>Back to Dashboard
-                </a>
-                <button type="submit" class="bg-gradient-to-r from-primary to-secondary hover:from-indigo-700 hover:to-indigo-800 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center group">
-                    <i class="fas fa-save mr-3 group-hover:animate-pulse"></i>Save Submission
-                </button>
+                    {% if existing_submission.submission_file %}
+                        <p class="mt-4"><strong class="text-gray-700">Submitted File:</strong>
+                            <a href="{{ existing_submission.submission_file.url }}" target="_blank" class="text-blue-600 hover:underline ml-2 flex items-center">
+                                <i class="fas fa-file-alt mr-1"></i>{{ existing_submission.submission_file.name|split_string:"/"|last_item }}
+                            </a>
+                        </p>
+                    {% else %}
+                        <p class="mt-4 text-gray-600">No file submitted.</p>
+                    {% endif %}
+                </div>
+                <div class="flex justify-end space-x-4 mt-8">
+                    <a href="{% url 'student_dashboard' %}" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center group">
+                        <i class="fas fa-arrow-left mr-3 group-hover:rotate-6"></i>Back to Dashboard
+                    </a>
+                </div>
+            {% else %}
+                <form method="post" enctype="multipart/form-data" class="space-y-6">
+                    {% csrf_token %}
+                    {{ form|crispy }}
+
+                    <div class="flex justify-end space-x-4 mt-8">
+                        <a href="{% url 'student_dashboard' %}" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center group">
+                            <i class="fas fa-arrow-left mr-3 group-hover:rotate-6"></i>Back to Dashboard
+                        </a>
+                        <button type="submit" class="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center group">
+                            <i class="fas fa-save mr-3 group-hover:animate-pulse"></i>Save Submission
+                        </button>
+                    </div>
+                </form>
+
+                {% if existing_submission %}
+                <div class="mt-8 p-6 bg-yellow-50 rounded-xl border border-yellow-200 text-yellow-800 shadow-inner">
+                    <h3 class="text-2xl font-semibold mb-3"><i class="fas fa-info-circle mr-2"></i>Previous Submission (Pending Grading)</h3>
+                    <p class="mb-2"><strong class="text-gray-700">Submitted On:</strong> {{ existing_submission.submission_date|date:"F d, Y H:i" }}</p>
+                    {% if existing_submission.submission_text %}
+                        <p class="mb-2"><strong class="text-gray-700">Your Text:</strong></p>
+                        <div class="prose max-w-none text-gray-700 border p-3 rounded-md bg-white">
+                            {{ existing_submission.submission_text|linebreaksbr }}
+                        </div>
+                    {% else %}
+                        <p class="mb-2 text-gray-600">No text content submitted.</p>
+                    {% endif %}
+
+                    {% if existing_submission.submission_file %}
+                        <p class="mt-4"><strong class="text-gray-700">Submitted File:</strong>
+                            <a href="{{ existing_submission.submission_file.url }}" target="_blank" class="text-blue-600 hover:underline ml-2 flex items-center">
+                                <i class="fas fa-file-alt mr-1"></i>{{ existing_submission.submission_file.name|split_string:"/"|last_item }}
+                            </a>
+                        </p>
+                    {% else %}
+                        <p class="mt-4 text-gray-600">No file submitted.</p>
+                    {% endif %}
+                </div>
+                {% endif %}
+            {% endif %}
+
+        {% elif assignment_type == 'mcq' %}
+            {# Pass is_graded_for_mcq to the included template #}
+            {% include 'core_app/student/mcq_submission_form.html' with formset=formset questions=questions existing_submission=existing_submission is_graded_for_mcq=is_graded_for_mcq %}
+        {% else %}
+            <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-6 rounded-lg shadow-md mt-4" role="alert">
+                <p class="font-bold text-xl mb-2"><i class="fas fa-exclamation-triangle mr-2"></i>Unsupported Assignment Type</p>
+                <p class="text-lg">This assignment type is not currently supported for submission.</p>
             </div>
-        </form>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

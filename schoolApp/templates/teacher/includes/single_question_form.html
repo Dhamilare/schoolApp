@@ -1,0 +1,104 @@
+{# core_app/templates/core_app/teacher/includes/single_question_form.html #}
+{% load crispy_forms_tags %}
+
+{# This template renders a single question form within a sleek card structure. #}
+{# It's designed to be fetched via AJAX and appended to the main form. #}
+
+<div class="question-form-wrapper bg-white p-6 rounded-xl shadow-2xl mb-8 border border-gray-100 transform transition-all duration-300 hover:scale-[1.01] hover:shadow-3xl animate-fade-in-up" data-form-index="{{ form_index }}">
+    <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-200">
+        <h3 class="text-2xl font-bold text-gray-800">Question {{ form_index|add:1 }}</h3>
+        <div class="flex space-x-2">
+            {# Delete Button for the question #}
+            <button type="button" class="delete-question-btn bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-full shadow-md transition duration-300 transform hover:scale-105 flex items-center text-sm">
+                <i class="fas fa-trash-alt mr-2"></i>Delete
+            </button>
+            {# Hidden DELETE checkbox for Django formset management #}
+            {{ question_form.DELETE }}
+        </div>
+    </div>
+
+    {# Hidden ID field for existing questions #}
+    {% if question_form.instance.pk %}
+        <p class="mb-4 text-gray-600 text-sm">
+            <strong class="text-gray-700">Question ID:</strong> {{ question_form.instance.pk }}
+            {% if question_form.DELETE.value %}
+                <span class="text-red-500 font-semibold ml-2">(Marked for Deletion)</span>
+            {% endif %}
+        </p>
+    {% endif %}
+    {{ question_form.id }}
+
+    <div class="space-y-6">
+        {# Render question_text and points using crispy forms #}
+        {% crispy question_form %}
+
+        <h4 class="text-lg font-semibold text-gray-700 mt-6 mb-3">Choices: <span class="text-sm text-gray-500">(Select one correct)</span></h4>
+        <div class="choices-container space-y-3">
+            {# IMPORTANT: Render the management form for the nested choice formset #}
+            {{ question_form.choice_formset.management_form }}
+            {% for choice_form in question_form.choice_formset %}
+                <div class="choice-form-item flex flex-col sm:flex-row items-start sm:items-center bg-gray-50 p-4 rounded-md shadow-sm border border-gray-100 transition-all duration-200 hover:bg-gray-100">
+                    {{ choice_form.id }}
+                    {{ choice_form.DELETE }} {# Allow deleting individual choices if needed #}
+                    
+                    {# The actual Django is_correct checkbox is rendered hidden #}
+                    {{ choice_form.is_correct }} 
+
+                    <div class="flex-grow w-full sm:w-auto mr-0 sm:mr-4 mb-2 sm:mb-0">
+                        {# Render choice_text using crispy forms #}
+                        {{ choice_form.choice_text.errors }} {# Display errors for choice_text #}
+                        {{ choice_form.choice_text }}
+                    </div>
+                    <div class="flex items-center self-end sm:self-center">
+                        {# Custom visual checkbox (div) that controls the hidden Django checkbox #}
+                        <div class="custom-correct-selector w-6 h-6 rounded-full border-2 border-gray-400 flex items-center justify-center cursor-pointer transition-all duration-200
+                                {% if choice_form.is_correct.value %}bg-blue-600 border-blue-600{% else %}hover:border-blue-400{% endif %}"
+                                data-target-is-correct-id="{{ choice_form.is_correct.id_for_label }}" {# Correctly pass the ID of the hidden input #}
+                                data-is-checked="{% if choice_form.is_correct.value %}true{% else %}false{% endif %}"
+                        >
+                            {% if choice_form.is_correct.value %}
+                                <i class="fas fa-check text-white text-sm"></i>
+                            {% endif %}
+                        </div>
+                        <span class="ml-2 text-sm text-gray-700">Correct</span>
+                    </div>
+                </div>
+            {% endfor %}
+            {# Error display for choice formset #}
+            {% if question_form.choice_formset.non_form_errors %}
+                <div class="text-red-600 text-sm mt-2">
+                    {% for error in question_form.choice_formset.non_form_errors %}
+                        <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            {% if question_form.choice_formset.errors %}
+                {% for form_errors in question_form.choice_formset.errors %}
+                    {% for field, errors in form_errors.items %}
+                        {% for error in errors %}
+                            <p class="text-red-600 text-sm">{{ field }}: {{ error }}</p>
+                        {% endfor %}
+                    {% endfor %}
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+
+    {# Error display for question form itself #}
+    {% if question_form.errors %}
+        <div class="text-red-600 text-sm mt-4">
+            {% for field, errors in question_form.errors.items %}
+                {% for error in errors %}
+                    <p>{{ field }}: {{ error }}</p>
+                {% endfor %}
+            {% endfor %}
+        </div>
+    {% endif %}
+    {% if question_form.non_field_errors %}
+        <div class="text-red-600 text-sm mt-4">
+            {% for error in question_form.non_field_errors %}
+                <p>{{ error }}</p>
+            {% endfor %}
+        </div>
+    {% endif %}
+</div>

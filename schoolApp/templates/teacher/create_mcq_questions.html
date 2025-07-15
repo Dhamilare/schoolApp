@@ -1,0 +1,193 @@
+{# core_app/templates/core_app/teacher/create_mcq_questions.html #}
+{% extends 'base.html' %} {# CORRECTED: Ensure this extends 'core_app/base.html' #}
+{% load crispy_forms_tags %}
+{% load static %}
+
+{% block title %}Add Questions{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-4 md:p-6 lg:p-8 font-inter"> {# Added font-inter #}
+    <h1 class="text-4xl font-extrabold text-center bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600 mb-8 animate-fade-in-down"> {# Updated gradient #}
+        <i class="fas fa-question-circle mr-3 text-indigo-500"></i>Add Questions for: <span class="text-purple-500">{{ assignment.title }}</span>
+    </h1>
+
+    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-3xl mx-auto border border-gray-200 animate-fade-in">
+        <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200 text-blue-800">
+            <h2 class="text-2xl font-semibold mb-3">Assignment Details</h2>
+            <p class="mb-2"><strong class="text-gray-700">Subject:</strong> {{ assignment.subject.name }}</p>
+            <p class="mb-2"><strong class="text-gray-700">Class:</strong> {{ assignment.class_name_display }}</p>
+            <p class="mb-2"><strong class="text-gray-700">Due Date:</strong> {{ assignment.due_date|date:"F d, Y" }}</p>
+            <p class="mb-2"><strong class="text-gray-700">Type:</strong> {{ assignment.get_assignment_type_display }}</p>
+            <p class="mb-2"><strong class="text-gray-700">Current Total Max Score:</strong> {{ assignment.max_score|floatformat:2 }}</p>
+        </div>
+
+        <form method="post" id="question-form" class="space-y-8">
+            {% csrf_token %}
+            {{ question_formset.management_form }}
+
+            <div id="question-forms-container">
+                {% for question_form in question_formset.forms %}
+                    {% with form_index=forloop.counter0 %}
+                    {# Include the single question form template here #}
+                    {% include 'teacher/includes/single_question_form.html' with question_form=question_form form_index=form_index %}
+                    {% endwith %}
+                {% endfor %}
+            </div>
+
+            <div class="flex justify-between items-center mt-8">
+                <a href="{% url 'assignment_list' %}" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center group">
+                    <i class="fas fa-arrow-left mr-3 group-hover:rotate-6"></i>Back to Assignments
+                </a>
+                <div class="flex space-x-4">
+                    <button type="button" id="add-question-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105">
+                        <i class="fas fa-plus-circle mr-2"></i>Add Question
+                    </button>
+                    <button type="submit" class="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105">
+                        <i class="fas fa-save mr-3"></i>Save Questions
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const formContainer = document.getElementById('question-forms-container');
+        const addButton = document.getElementById('add-question-btn');
+        const totalFormsInput = document.getElementById('id_questions-TOTAL_FORMS');
+
+        // Function to set up custom "correct" selector behavior for a given question wrapper
+        function setupCustomCorrectSelectors(questionWrapper) {
+            const customSelectors = questionWrapper.querySelectorAll('.custom-correct-selector');
+            
+            customSelectors.forEach(selector => {
+                selector.removeEventListener('click', handleCustomSelectorClick); // Prevent duplicates
+                selector.addEventListener('click', handleCustomSelectorClick);
+            });
+        }
+
+        function handleCustomSelectorClick() {
+            const currentSelector = this; // The clicked custom visual div
+            const questionWrapper = currentSelector.closest('.question-form-wrapper');
+            
+            // Get the ID of the hidden Django checkbox controlled by this custom selector
+            const targetHiddenCheckboxId = currentSelector.dataset.targetIsCorrectId;
+
+            // Find all custom selectors within this question's choices
+            const allCustomSelectorsInQuestion = questionWrapper.querySelectorAll('.custom-correct-selector');
+            
+            // First, uncheck all custom selectors visually and their corresponding hidden Django checkboxes
+            allCustomSelectorsInQuestion.forEach(selector => {
+                selector.classList.remove('bg-blue-600', 'border-blue-600');
+                selector.classList.add('border-gray-400');
+                selector.innerHTML = ''; // Remove checkmark icon
+                selector.dataset.isChecked = 'false';
+
+                // Also uncheck the corresponding hidden Django checkbox
+                const hiddenDjangoCheckbox = document.getElementById(selector.dataset.targetIsCorrectId);
+                if (hiddenDjangoCheckbox) {
+                    hiddenDjangoCheckbox.checked = false;
+                }
+            });
+
+            // Now, check the clicked custom selector visually and its corresponding hidden Django checkbox
+            currentSelector.classList.add('bg-blue-600', 'border-blue-600');
+            currentSelector.classList.remove('border-gray-400');
+            currentSelector.innerHTML = '<i class="fas fa-check text-white text-sm"></i>'; // Add checkmark icon
+            currentSelector.dataset.isChecked = 'true';
+
+            const targetHiddenCheckbox = document.getElementById(targetHiddenCheckboxId);
+            if (targetHiddenCheckbox) {
+                targetHiddenCheckbox.checked = true;
+            }
+        }
+
+
+        // Function to set up delete button functionality for a given question wrapper
+        function setupDeleteButton(questionWrapper) {
+            const deleteButton = questionWrapper.querySelector('.delete-question-btn');
+            const deleteCheckbox = questionWrapper.querySelector('input[type="checkbox"][name$="-DELETE"]');
+            
+            if (deleteButton && deleteCheckbox) {
+                // Initial state: if checkbox is checked (e.g., after form submission with errors), hide the form
+                if (deleteCheckbox.checked) {
+                    questionWrapper.classList.add('hidden'); // Use Tailwind's hidden class
+                    deleteButton.innerHTML = '<i class="fas fa-undo mr-2"></i>Undo Delete';
+                    deleteButton.classList.remove('bg-red-500', 'hover:bg-red-600');
+                    deleteButton.classList.add('bg-gray-500', 'hover:bg-gray-600');
+                }
+
+                deleteButton.addEventListener('click', function () {
+                    if (deleteCheckbox.checked) {
+                        // If already marked for deletion, undo it
+                        deleteCheckbox.checked = false;
+                        questionWrapper.classList.remove('hidden'); // Show the form
+                        this.innerHTML = '<i class="fas fa-trash-alt mr-2"></i>Delete';
+                        this.classList.remove('bg-gray-500', 'hover:bg-gray-600');
+                        this.classList.add('bg-red-500', 'hover:bg-red-600');
+                    } else {
+                        // Mark for deletion
+                        deleteCheckbox.checked = true;
+                        questionWrapper.classList.add('hidden'); // Hide the form visually
+                        this.innerHTML = '<i class="fas fa-undo mr-2"></i>Undo Delete';
+                        this.classList.remove('bg-red-500', 'hover:bg-red-600');
+                        this.classList.add('bg-gray-500', 'hover:bg-gray-600');
+                    }
+                });
+            }
+        }
+
+        // Function to initialize all forms on the page (both existing and newly added)
+        function initializeAllForms() {
+            formContainer.querySelectorAll('.question-form-wrapper').forEach(questionWrapper => {
+                setupCustomCorrectSelectors(questionWrapper);
+                setupDeleteButton(questionWrapper);
+            });
+        }
+
+        // Initial setup for existing forms when the page loads
+        initializeAllForms();
+
+        // Event listener for adding new questions
+        addButton.addEventListener('click', function () {
+            const formCount = parseInt(totalFormsInput.value);
+            const url = new URL(window.location.href);
+            url.searchParams.set('new_form_index', formCount);
+
+            fetch(url.toString())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(html => {
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = html;
+                    const newForm = tempDiv.firstElementChild;
+                    formContainer.appendChild(newForm);
+
+                    // Update TOTAL_FORMS in the management form
+                    totalFormsInput.value = formCount + 1;
+
+                    // Initialize the newly added form
+                    setupCustomCorrectSelectors(newForm);
+                    setupDeleteButton(newForm);
+
+                    // Scroll to the new form
+                    newForm.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                })
+                .catch(err => {
+                    console.error('Error loading new question form:', err);
+                    // Use a custom message box instead of alert()
+                    const errorMessage = document.createElement('div');
+                    errorMessage.className = 'bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mt-4 rounded-md';
+                    errorMessage.innerHTML = `<p class="font-bold">Error:</p><p>${err.message || 'Could not add new question.'}</p>`;
+                    formContainer.before(errorMessage);
+                    setTimeout(() => errorMessage.remove(), 5000);
+                });
+        });
+    });
+</script>
+{% endblock %}

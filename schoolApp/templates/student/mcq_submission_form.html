@@ -1,0 +1,62 @@
+{# core_app/templates/core_app/student/mcq_submission_form.html #}
+{% load crispy_forms_tags %}
+{% load static %}
+
+<form method="post" class="space-y-6">
+    {% csrf_token %}
+    {{ formset.management_form }}
+
+    {% if is_graded_for_mcq %}
+        <div class="mt-4 p-6 bg-green-100 rounded-xl border border-green-300 text-green-800 shadow-inner">
+            <h3 class="text-2xl font-semibold mb-3"><i class="fas fa-check-circle mr-2"></i>Submission Graded</h3>
+            <p class="mb-2">This MCQ assignment has been graded. You can no longer change your answers.</p>
+            <p class="mb-2"><strong class="text-gray-700">Your Score:</strong> {{ existing_submission.score.score_achieved|floatformat:2 }} / {{ assignment.max_score|floatformat:2 }}</p>
+        </div>
+    {% elif existing_submission %}
+        <div class="mt-4 p-6 bg-yellow-100 rounded-xl border border-yellow-300 text-yellow-800 shadow-inner">
+            <h3 class="text-2xl font-semibold mb-3"><i class="fas fa-info-circle mr-2"></i>Previous Submission Found</h3>
+            <p class="mb-2">You have a previous submission for this MCQ. You can update your answers below.</p>
+        </div>
+    {% endif %}
+
+    <div class="space-y-8">
+        {% for form in formset %}
+            <div class="question-card bg-white p-6 rounded-xl shadow-md border border-gray-100 animate-fade-in-up">
+                {{ form.id }} {# Hidden StudentAnswer ID #}
+                {{ form.question }} {# Hidden Question ID #}
+                <p class="text-lg font-semibold text-gray-800 mb-3">Q{{ forloop.counter }}: {{ form.question_text.initial }}</p>
+                <div class="choices-radio-group space-y-2">
+                    {% for radio in form.chosen_choice %}
+                        <label class="inline-flex items-center text-gray-700 cursor-pointer w-full p-2 rounded-md transition duration-200 ease-in-out hover:bg-gray-100
+                                {% if radio.data.selected %}bg-blue-50{% endif %}">
+                            <input type="radio" name="{{ radio.name }}" value="{{ radio.data.value }}" id="{{ radio.id_for_label }}"
+                                class="form-radio h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500
+                                {% if is_graded_for_mcq %}opacity-50 cursor-not-allowed{% endif %}"
+                                {% if radio.data.selected %}checked{% endif %}
+                                {% if is_graded_for_mcq %}disabled{% endif %}>
+                            <span class="ml-2 text-base">{{ radio.choice_label }}</span>
+                        </label>
+                    {% endfor %}
+                </div>
+                {% for error in form.chosen_choice.errors %}
+                    <p class="text-red-600 text-sm mt-1">{{ error }}</p>
+                {% endfor %}
+            </div>
+        {% endfor %}
+    </div>
+
+    <div class="flex justify-end space-x-4 mt-8">
+        <a href="{% url 'student_dashboard' %}" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center group">
+            <i class="fas fa-arrow-left mr-3 group-hover:rotate-6"></i>Back to Dashboard
+        </a>
+        {% if not is_graded_for_mcq %}
+            <button type="submit" class="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white font-bold py-3 px-6 rounded-full shadow-lg transition duration-300 transform hover:scale-105 flex items-center group">
+                <i class="fas fa-paper-plane mr-3 group-hover:animate-pulse"></i>Submit Answers
+            </button>
+        {% else %}
+            <button type="button" class="bg-gray-400 text-white font-bold py-3 px-6 rounded-full shadow-lg cursor-not-allowed flex items-center">
+                <i class="fas fa-lock mr-3"></i>Graded
+            </button>
+        {% endif %}
+    </div>
+</form>

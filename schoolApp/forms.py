@@ -3,8 +3,10 @@ from .models import *
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Layout, Submit, Row, Column, Field
 from django.forms import BaseFormSet, formset_factory
+from django.forms import modelformset_factory, BaseModelFormSet
 from django.contrib.auth.forms import UserCreationForm
 from django.db import transaction
+from django.core.exceptions import ValidationError
 
 GENDER_CHOICES = [('Male', 'Male'), ('Female', 'Female'), ('Other', 'Other')]
 
@@ -13,12 +15,15 @@ GENDER_CHOICES = [('Male', 'Male'), ('Female', 'Female'), ('Other', 'Other')]
 class AssignmentForm(forms.ModelForm):
     class Meta:
         model = Assignment
-        fields = ['title', 'subject', '_class', 'term', 'max_score', 'due_date']
+        fields = ['title', 'subject', 'description', '_class', 'term', 'max_score', 'due_date','assignment_type']
         widgets = {
             'due_date': forms.DateInput(attrs={'type': 'date', 'class': 'form-input rounded-md shadow-sm'}),
+            'description': forms.Textarea(attrs={'rows': 4, 'class': 'form-textarea rounded-md shadow-sm'}),
+            'assignment_type': forms.Select(attrs={'class': 'form-select rounded-md shadow-sm'}),
         }
         labels = {
-            '_class': 'Class', # Customize label for '_class' field
+            '_class': 'Class',
+            'assignment_type': 'Assignment Type',
         }
 
     def __init__(self, *args, **kwargs):
@@ -41,6 +46,7 @@ class AssignmentForm(forms.ModelForm):
                 css_class='grid grid-cols-1 md:grid-cols-2 gap-4' # Tailwind grid for responsiveness
             ),
             Field('due_date', css_class='form-input rounded-md shadow-sm'),
+            Field('assignment_type', css_class='form-select rounded-md shadow-sm'),
             Submit('submit', 'Save Assignment', css_class='bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-300')
         )
 
@@ -58,36 +64,55 @@ class AssignmentForm(forms.ModelForm):
 class ScoreForm(forms.ModelForm):
     student_name = forms.CharField(
         label="Student Name",
-        required=False, # Not strictly required as it's for display
-        widget=forms.TextInput(attrs={'readonly': 'readonly', 'class': 'form-input bg-gray-100 cursor-not-allowed rounded-md shadow-sm'})
+        required=False,
+        widget=forms.TextInput(attrs={
+            'readonly': 'readonly',
+            'class': 'form-input bg-gray-100 cursor-not-allowed rounded-md shadow-sm'
+        })
     )
 
     class Meta:
         model = Score
-        fields = ['id', 'student', 'score_achieved'] # 'id' is needed for updating existing scores
+        fields = ['id', 'student', 'score_achieved']
         widgets = {
-            'student': forms.HiddenInput(), # Hide student field, use student_name for display
-            'score_achieved': forms.NumberInput(attrs={'class': 'form-input rounded-md shadow-sm'})
+            'student': forms.HiddenInput(),  # actual FK to be submitted
+            'score_achieved': forms.NumberInput(attrs={
+                'class': 'form-input rounded-md shadow-sm'
+            }),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, assignment=None, **kwargs):
+        """
+        Accepts an optional 'assignment' argument for use in validation.
+        """
+        self.assignment = assignment
         super().__init__(*args, **kwargs)
-        if self.instance and self.instance.student:
-            self.fields['student_name'].initial = f"{self.instance.student.first_name} {self.instance.student.last_name}"
-        elif 'initial' in kwargs and 'student' in kwargs['initial']:
-            student = Student.objects.get(pk=kwargs['initial']['student'])
+
+        # Safely populate the student_name field from instance or initial
+        student = getattr(self.instance, 'student', None)
+
+        if student:
             self.fields['student_name'].initial = f"{student.first_name} {student.last_name}"
+        elif 'initial' in kwargs and 'student' in kwargs['initial']:
+            try:
+                student_obj = Student.objects.get(pk=kwargs['initial']['student'])
+                self.fields['student_name'].initial = f"{student_obj.first_name} {student_obj.last_name}"
+            except Student.DoesNotExist:
+                self.fields['student_name'].initial = "Unknown Student"
 
     def clean_score_achieved(self):
-        score_achieved = self.cleaned_data['score_achieved']
-        assignment = self.cleaned_data.get('assignment')
+        score = self.cleaned_data.get('score_achieved')
 
-        if assignment and score_achieved is not None:
-            if score_achieved < 0:
-                raise forms.ValidationError("Score cannot be negative.")
-            if score_achieved > assignment.max_score:
-                raise forms.ValidationError(f"Score cannot exceed {assignment.max_score}.")
-        return score_achieved
+        if score is None:
+            return score  # Allow other validations (e.g., required field) to handle this
+
+        if score < 0:
+            raise ValidationError("Score cannot be negative.")
+
+        if self.assignment and score > self.assignment.max_score:
+            raise ValidationError(f"Score cannot exceed {self.assignment.max_score}.")
+
+        return score
 
 
 
@@ -233,22 +258,24 @@ class SubjectForm(forms.ModelForm):
 class SubmissionForm(forms.ModelForm):
     class Meta:
         model = Submission
-        fields = ['submission_text'] # Only text for now
+        fields = ['submission_text', 'submission_file']
         widgets = {
-            'submission_text': forms.Textarea(attrs={'rows': 10, 'class': 'form-textarea rounded-md shadow-sm resize-y', 'placeholder': 'Type your answer here...'}),
+            'submission_text': forms.Textarea(attrs={'rows': 6, 'class': 'form-textarea'}),
+            'submission_file': forms.ClearableFileInput(attrs={'class': 'form-input'}),
         }
         labels = {
             'submission_text': 'Your Answer',
+            'submission_file': 'Upload File (if applicable)',
         }
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.helper = FormHelper()
-        self.helper.layout = Layout(
-            Field('submission_text', css_class='form-control'),
-            Submit('submit', 'Submit Assignment', css_class='bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md shadow-lg transition duration-300')
-        )
+    def clean(self):
+        cleaned_data = super().clean()
+        submission_text = cleaned_data.get('submission_text')
+        submission_file = cleaned_data.get('submission_file')
 
+        if not self.instance.pk and not submission_text and not submission_file:
+            raise forms.ValidationError("You must provide either text or a file for your submission.")
+        return cleaned_data
 
 class StudentUserCreationForm(UserCreationForm):
     first_name = forms.CharField(max_length=100, required=True)
@@ -327,3 +354,180 @@ class StudentUserUpdateForm(forms.ModelForm):
         if commit:
             student.save()
         return student
+    
+
+class QuestionForm(forms.ModelForm):
+    class Meta:
+        model = Question
+        fields = ['question_text', 'points']
+        widgets = {
+            'question_text': forms.Textarea(attrs={
+                'rows': 3, 'class': 'form-textarea rounded-md shadow-sm',
+                'placeholder': 'Enter the question text...'
+            }),
+            'points': forms.NumberInput(attrs={
+                'class': 'form-input rounded-md shadow-sm', 'min': '0.01', 'step': '0.01'
+            }),
+        }
+        labels = {
+            'question_text': 'Question',
+            'points': 'Points for this question',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_tag = False  
+        self.helper.layout = Layout(
+            Field('question_text'),
+            Field('points')
+        )
+
+
+
+class ChoiceForm(forms.ModelForm):
+    is_correct = forms.BooleanField(
+        required=False,
+        widget=forms.HiddenInput()  # Hidden to be toggled via JS
+    )
+
+    class Meta:
+        model = Choice
+        fields = ['choice_text', 'is_correct']
+        widgets = {
+            'choice_text': forms.TextInput(attrs={
+                'class': 'form-input h-10 w-full px-3 py-2 border border-gray-300 text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent',
+                'placeholder': 'Enter choice text...',
+            }),
+        }
+        labels = {
+            'choice_text': 'Choice',
+            'is_correct': '',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Crispy Forms layout for individual Choice
+        self.helper = FormHelper()
+        self.helper.form_show_labels = True
+        self.helper.render_unmentioned_fields = True
+        self.helper.layout = Layout(
+            Row(
+                Column(Field('choice_text'), css_class='col-span-full'),
+            )
+        )
+class BaseChoiceFormSet(BaseModelFormSet):
+    def clean(self):
+        super().clean()
+
+        if any(self.errors):
+            return  # Skip validation if any individual form has errors
+
+        non_deleted_forms = [
+            form for form in self.forms
+            if form.cleaned_data and not form.cleaned_data.get('DELETE', False)
+        ]
+
+        if len(non_deleted_forms) < 2:
+            raise ValidationError("Please provide at least two choices.")
+
+        correct_count = sum(
+            1 for form in non_deleted_forms
+            if form.cleaned_data.get('is_correct')
+        )
+
+        if correct_count != 1:
+            raise ValidationError("You must mark exactly one correct answer.")
+
+
+ChoiceFormSet = modelformset_factory(
+    Choice,
+    form=ChoiceForm,
+    formset=BaseChoiceFormSet,
+    extra=4,
+    can_delete=True,
+    fields=('choice_text', 'is_correct'),
+    
+)
+
+
+class StudentAnswerForm(forms.ModelForm):
+    question_text = forms.CharField(
+        label="Question",
+        required=False,
+        widget=forms.Textarea(attrs={'readonly': 'readonly', 'class': 'form-textarea bg-gray-100 cursor-not-allowed rounded-md shadow-sm resize-none', 'rows': 3})
+    )
+    chosen_choice = forms.ModelChoiceField(
+        queryset=Choice.objects.none(),
+        widget=forms.RadioSelect(attrs={'class': 'form-radio h-4 w-4 text-primary'}),
+        empty_label=None,
+        required=False,
+        label="Your Answer"
+    )
+
+    class Meta:
+        model = StudentAnswer
+        fields = ['id', 'question', 'chosen_choice']
+        widgets = {
+            'question': forms.HiddenInput(),
+            'id': forms.HiddenInput(),
+        }
+
+    def __init__(self, *args, **kwargs):
+        question = kwargs.pop('question', None)
+        super().__init__(*args, **kwargs)
+
+        self.helper = FormHelper()
+        self.helper.layout = Layout(
+            Field('question_text', css_class='form-control'),
+            Field('chosen_choice', css_class='form-radio-group'),
+            Field('question'),
+            Field('id'),
+        )
+
+        if question:
+            self.fields['question_text'].initial = question.question_text
+            self.fields['chosen_choice'].queryset = question.choices.all()
+            if self.instance and self.instance.chosen_choice:
+                self.fields['chosen_choice'].initial = self.instance.chosen_choice
+
+
+class BaseStudentAnswerFormSet(forms.BaseFormSet):
+    def __init__(self, *args, **kwargs):
+        self.questions = kwargs.pop('questions', None)
+        self.student_submission = kwargs.pop('student_submission', None)
+        initial_data = []
+
+        existing_answers = {}
+        if self.student_submission:
+            existing_answers = {
+                a.question_id: a
+                for a in StudentAnswer.objects.filter(submission=self.student_submission)
+            }
+
+        if self.questions and not (args or kwargs.get('data')):
+            for q in self.questions:
+                initial_data.append({
+                    'question': q.id,
+                    'chosen_choice': existing_answers.get(q.id, {}).chosen_choice.id if q.id in existing_answers and existing_answers[q.id].chosen_choice else None,
+                    'id': existing_answers.get(q.id, {}).id if q.id in existing_answers else None,
+                })
+            kwargs['initial'] = initial_data
+            kwargs['max_num'] = len(initial_data)
+            kwargs['extra'] = 0
+
+        super().__init__(*args, **kwargs)
+
+    def _construct_form(self, i, **kwargs):
+        """
+        Overrides the default to pass the specific question object to each form.
+        """
+        form = super()._construct_form(i, **kwargs)
+        if self.questions and i < len(self.questions):
+            form.question = self.questions[i]
+            # Pass the question object to the form's __init__
+            form.__init__(**kwargs, question=self.questions[i])
+        return form
+
+StudentAnswerFormSet = formset_factory(StudentAnswerForm, formset=BaseStudentAnswerFormSet, extra=0)

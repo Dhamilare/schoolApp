@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils.text import slugify
+from django.core.exceptions import ValidationError
+from django.db.models import Sum
 
 # --- Custom User Model ---
 class User(AbstractUser):
@@ -49,7 +51,7 @@ class SchoolProfile(models.Model):
 
     class Meta:
         verbose_name = "School Profile"
-        verbose_name_plural = "School Profiles" # <<< FIXED
+        verbose_name_plural = "School Profiles" 
         app_label = 'schoolApp'
 
     def __str__(self):
@@ -206,7 +208,7 @@ class Term(models.Model):
 
     class Meta:
         verbose_name = "Academic Term"
-        verbose_name_plural = "Academic Terms" # <<< FIXED
+        verbose_name_plural = "Academic Terms" 
         ordering = ['-start_date']
         app_label = 'schoolApp'
 
@@ -214,10 +216,14 @@ class Term(models.Model):
         return self.name
 
 class Assignment(models.Model):
-    """
-    Represents an assignment, test, or exam for a specific subject and class.
-    """
+
+    ASSIGNMENT_TYPE_CHOICES = [
+        ('text_file', 'Text/File Submission'),
+        ('mcq', 'Multiple Choice Questions'),
+    ]
+
     title = models.CharField(max_length=255, help_text="Title of the assignment or exam (e.g., 'Mid-term Test', 'Homework 1').")
+    description = models.TextField(blank=True, null=True, help_text="Detailed description of the assignment.")
     subject = models.ForeignKey(
         Subject,
         on_delete=models.CASCADE,
@@ -258,9 +264,16 @@ class Assignment(models.Model):
         help_text="The teacher who recorded this assignment."
     )
 
+    assignment_type = models.CharField(
+        max_length=20,
+        choices=ASSIGNMENT_TYPE_CHOICES,
+        default='text_file',
+        help_text="Type of assignment: text/file submission or multiple choice questions."
+    )
+
     class Meta:
         verbose_name = "Assignment/Exam"
-        verbose_name_plural = "Assignments/Exams" # <<< FIXED
+        verbose_name_plural = "Assignments/Exams"
         unique_together = ('title', 'subject', '_class', 'term')
         ordering = ['-date_given', 'title']
         app_label = 'schoolApp'
@@ -271,6 +284,21 @@ class Assignment(models.Model):
     @property
     def class_obj(self):
         return self._class
+    
+    @property
+    def class_name_display(self):
+        """Returns the name of the associated class for template display."""
+        return self._class.name if self._class else "N/A"
+
+    def clean(self):
+        if self.due_date < self.date_given:
+            raise ValidationError("Due date cannot be before the date given.")
+
+    def get_total_points(self):
+        """Calculates the total points for an MCQ assignment based on its questions."""
+        if self.assignment_type == 'mcq':
+            return self.questions.aggregate(total_points=Sum('points'))['total_points'] or 0
+        return self.max_score
 
 
 class Score(models.Model):
@@ -381,7 +409,7 @@ class Attendance(models.Model):
 class Submission(models.Model):
     assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE, related_name='submissions')
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='submissions')
-    submission_text = models.TextField(blank=True, null=True) # For text-based answers
+    submission_text = models.TextField(blank=True, null=True)
     submission_file = models.FileField(upload_to='assignment_submissions/', blank=True, null=True) # For file uploads
     submitted_at = models.DateTimeField(auto_now_add=True)
     is_graded = models.BooleanField(default=False)
@@ -393,3 +421,76 @@ class Submission(models.Model):
 
     def __str__(self):
         return f"Submission by {self.student.get_full_name()} for {self.assignment.title}"
+
+class Question(models.Model):
+    assignment = models.ForeignKey(
+        Assignment,
+        on_delete=models.CASCADE,
+        related_name='questions',
+        limit_choices_to={'assignment_type': 'mcq'},
+        help_text="The MCQ assignment this question belongs to."
+    )
+    question_text = models.TextField(help_text="The text of the multiple choice question.")
+    points = models.DecimalField(max_digits=5, decimal_places=2, default=1.0, help_text="Points awarded for correctly answering this question.")
+
+    class Meta:
+        verbose_name = "Question"
+        verbose_name_plural = "Questions"
+        ordering = ['-id'] 
+        app_label = 'schoolApp'
+
+    def __str__(self):
+        return f"Q: {self.question_text[:50]}... (Assignment: {self.assignment.title})"
+
+class Choice(models.Model):
+    question = models.ForeignKey(
+        Question,
+        on_delete=models.CASCADE,
+        related_name='choices',
+        help_text="The question this choice belongs to."
+    )
+    choice_text = models.CharField(max_length=255, help_text="The text of the choice option.")
+    is_correct = models.BooleanField(default=False, help_text="Designates if this choice is the correct answer.")
+
+    class Meta:
+        verbose_name = "Choice"
+        verbose_name_plural = "Choices"
+        ordering = ['-id'] # Order by creation order
+        app_label = 'schoolApp'
+
+    def __str__(self):
+        return f"Choice: {self.choice_text[:50]}... (Correct: {self.is_correct})"
+    
+
+class StudentAnswer(models.Model):
+    submission = models.ForeignKey(
+        Submission,
+        on_delete=models.CASCADE,
+        related_name='student_answers',
+        help_text="The overall submission this answer belongs to."
+    )
+    question = models.ForeignKey(
+        Question,
+        on_delete=models.CASCADE,
+        related_name='student_answers',
+        help_text="The question this answer is for."
+    )
+    chosen_choice = models.ForeignKey(
+        Choice,
+        on_delete=models.CASCADE,
+        related_name='chosen_by_students',
+        null=True,
+        blank=True,
+        help_text="The choice selected by the student."
+    )
+    is_correct = models.BooleanField(default=False, help_text="Indicates if the student's chosen answer was correct.")
+    points_awarded = models.DecimalField(max_digits=5, decimal_places=2, default=0.0, help_text="Points awarded for this question.")
+
+    class Meta:
+        verbose_name = "Student Answer"
+        verbose_name_plural = "Student Answers"
+        unique_together = ('submission', 'question')
+        app_label = 'schoolApp'
+
+    def __str__(self):
+        return f"Answer for '{self.question.question_text[:30]}...' by {self.submission.student.get_full_name()}"
